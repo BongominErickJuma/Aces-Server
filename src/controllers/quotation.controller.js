@@ -1,0 +1,626 @@
+/**
+ * Quotation Controller
+ * Handles CRUD operations for quotations
+ */
+
+const { Quotation } = require('../models');
+const ApiResponse = require('../utils/response');
+const { validationResult } = require('express-validator');
+const pdfService = require('../services/pdf.service');
+
+/**
+ * Get all quotations with filtering, sorting, and pagination
+ */
+const getQuotations = async (req, res) => {
+  try {
+    const {
+      page = 1,
+      limit = 20,
+      type,
+      status,
+      search,
+      sortBy = 'createdAt',
+      sortOrder = 'desc',
+      startDate,
+      endDate,
+      createdBy
+    } = req.query;
+
+    const pageNumber = parseInt(page, 10);
+    const limitNumber = parseInt(limit, 10);
+    const skip = (pageNumber - 1) * limitNumber;
+
+    // Build filter object
+    const filter = {};
+
+    // User role-based filtering
+    if (req.user.role !== 'admin') {
+      filter.createdBy = req.user._id;
+    } else if (createdBy) {
+      filter.createdBy = createdBy;
+    }
+
+    if (type) filter.type = type;
+    if (status) filter['validity.status'] = status;
+
+    // Date range filtering
+    if (startDate || endDate) {
+      filter.createdAt = {};
+      if (startDate) filter.createdAt.$gte = new Date(startDate);
+      if (endDate) filter.createdAt.$lte = new Date(endDate);
+    }
+
+    // Text search
+    if (search) {
+      filter.$or = [
+        { quotationNumber: { $regex: search, $options: 'i' } },
+        { 'client.name': { $regex: search, $options: 'i' } },
+        { 'client.company': { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    // Build sort object
+    const sort = {};
+    sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
+
+    // Execute queries in parallel
+    const [quotations, totalCount] = await Promise.all([
+      Quotation.find(filter)
+        .populate('createdBy', 'fullName email')
+        .populate('convertedToReceipt.receiptId', 'receiptNumber')
+        .populate('convertedToReceipt.convertedBy', 'fullName')
+        .sort(sort)
+        .skip(skip)
+        .limit(limitNumber)
+        .lean(),
+      Quotation.countDocuments(filter)
+    ]);
+
+    ApiResponse.paginated(
+      res,
+      quotations,
+      {
+        page: pageNumber,
+        limit: limitNumber,
+        total: totalCount
+      },
+      'Quotations retrieved successfully'
+    );
+  } catch (error) {
+    console.error('Get quotations error:', error);
+    ApiResponse.error(res, 'Failed to retrieve quotations', 500);
+  }
+};
+
+/**
+ * Get single quotation by ID
+ */
+const getQuotationById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const quotation = await Quotation.findById(id)
+      .populate('createdBy', 'fullName email phonePrimary')
+      .populate(
+        'convertedToReceipt.receiptId',
+        'receiptNumber receiptType createdAt'
+      )
+      .populate('convertedToReceipt.convertedBy', 'fullName');
+
+    if (!quotation) {
+      return ApiResponse.error(res, 'Quotation not found', 404);
+    }
+
+    // Check permissions
+    if (
+      req.user.role !== 'admin' &&
+      quotation.createdBy._id.toString() !== req.user._id.toString()
+    ) {
+      return ApiResponse.error(res, 'Access denied', 403);
+    }
+
+    ApiResponse.success(res, { quotation }, 'Quotation retrieved successfully');
+  } catch (error) {
+    console.error('Get quotation by ID error:', error);
+    ApiResponse.error(res, 'Failed to retrieve quotation', 500);
+  }
+};
+
+/**
+ * Create new quotation
+ */
+const createQuotation = async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return ApiResponse.validationError(res, errors.array());
+    }
+
+    // Validate office move requirements
+    if (req.body.type === 'office' && !req.body.client.company) {
+      return ApiResponse.error(
+        res,
+        'Company name is required for office moves',
+        400
+      );
+    }
+
+    // Generate quotation number
+    const quotationNumber = await Quotation.generateQuotationNumber();
+
+    // Calculate service totals
+    const services = req.body.services.map(service => ({
+      ...service,
+      total: service.quantity * service.unitPrice
+    }));
+
+    // Create quotation data
+    const quotationData = {
+      ...req.body,
+      quotationNumber,
+      services,
+      createdBy: req.user._id
+    };
+
+    const quotation = new Quotation(quotationData);
+    await quotation.save();
+
+    // Populate created quotation
+    await quotation.populate('createdBy', 'fullName email');
+
+    // Create notification for admins
+    try {
+      const User = require('../models/User.model');
+      const admins = await User.find({
+        role: 'admin',
+        status: 'active',
+        _id: { $ne: req.user._id }
+      });
+      const adminIds = admins.map(admin => admin._id);
+
+      if (adminIds.length > 0) {
+        const Notification = require('../models/Notification.model');
+        await Notification.createDocumentNotification(
+          'document_created',
+          'Quotation',
+          quotation._id,
+          quotation.quotationNumber,
+          req.user._id,
+          adminIds
+        );
+      }
+    } catch (notifError) {
+      console.error('Failed to create notification:', notifError);
+    }
+
+    ApiResponse.success(
+      res,
+      { quotation },
+      'Quotation created successfully',
+      201
+    );
+  } catch (error) {
+    console.error('Create quotation error:', error);
+
+    if (error.name === 'ValidationError') {
+      return ApiResponse.validationError(res, Object.values(error.errors));
+    }
+
+    ApiResponse.error(res, 'Failed to create quotation', 500);
+  }
+};
+
+/**
+ * Update quotation
+ */
+const updateQuotation = async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return ApiResponse.validationError(res, errors.array());
+    }
+
+    const { id } = req.params;
+
+    const quotation = await Quotation.findById(id);
+    if (!quotation) {
+      return ApiResponse.error(res, 'Quotation not found', 404);
+    }
+
+    // Check permissions
+    if (
+      req.user.role !== 'admin' &&
+      quotation.createdBy.toString() !== req.user._id.toString()
+    ) {
+      return ApiResponse.error(res, 'Access denied', 403);
+    }
+
+    // Prevent updating converted quotations
+    if (quotation.validity.status === 'converted') {
+      return ApiResponse.error(res, 'Cannot update converted quotations', 400);
+    }
+
+    // Validate office move requirements
+    const updatedType = req.body.type || quotation.type;
+    const updatedCompany = req.body.client?.company || quotation.client.company;
+
+    if (updatedType === 'office' && !updatedCompany) {
+      return ApiResponse.error(
+        res,
+        'Company name is required for office moves',
+        400
+      );
+    }
+
+    // Calculate service totals if services are being updated
+    if (req.body.services) {
+      req.body.services = req.body.services.map(service => ({
+        ...service,
+        total: service.quantity * service.unitPrice
+      }));
+    }
+
+    // Update quotation
+    Object.assign(quotation, req.body);
+    quotation.version += 1;
+
+    await quotation.save();
+
+    // Populate updated quotation
+    await quotation.populate('createdBy', 'fullName email');
+
+    ApiResponse.success(res, { quotation }, 'Quotation updated successfully');
+  } catch (error) {
+    console.error('Update quotation error:', error);
+
+    if (error.name === 'ValidationError') {
+      return ApiResponse.validationError(res, Object.values(error.errors));
+    }
+
+    ApiResponse.error(res, 'Failed to update quotation', 500);
+  }
+};
+
+/**
+ * Delete quotation (Admin only)
+ */
+const deleteQuotation = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (req.user.role !== 'admin') {
+      return ApiResponse.error(res, 'Access denied. Admin role required', 403);
+    }
+
+    const quotation = await Quotation.findById(id);
+    if (!quotation) {
+      return ApiResponse.error(res, 'Quotation not found', 404);
+    }
+
+    // Prevent deleting converted quotations
+    if (quotation.validity.status === 'converted') {
+      return ApiResponse.error(res, 'Cannot delete converted quotations', 400);
+    }
+
+    await Quotation.findByIdAndDelete(id);
+
+    ApiResponse.success(
+      res,
+      { quotationNumber: quotation.quotationNumber },
+      'Quotation deleted successfully'
+    );
+  } catch (error) {
+    console.error('Delete quotation error:', error);
+    ApiResponse.error(res, 'Failed to delete quotation', 500);
+  }
+};
+
+/**
+ * Extend quotation validity
+ */
+const extendValidity = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { days, reason } = req.body;
+
+    if (!days || !reason) {
+      return ApiResponse.error(res, 'Days and reason are required', 400);
+    }
+
+    if (days < 1 || days > 90) {
+      return ApiResponse.error(res, 'Days must be between 1 and 90', 400);
+    }
+
+    const quotation = await Quotation.findById(id);
+    if (!quotation) {
+      return ApiResponse.error(res, 'Quotation not found', 404);
+    }
+
+    // Check permissions
+    if (
+      req.user.role !== 'admin' &&
+      quotation.createdBy.toString() !== req.user._id.toString()
+    ) {
+      return ApiResponse.error(res, 'Access denied', 403);
+    }
+
+    if (quotation.validity.status === 'converted') {
+      return ApiResponse.error(res, 'Cannot extend converted quotations', 400);
+    }
+
+    await quotation.extendValidity(days, reason, req.user.fullName);
+
+    ApiResponse.success(
+      res,
+      {
+        quotationNumber: quotation.quotationNumber,
+        newValidUntil: quotation.validity.validUntil,
+        remainingDays: quotation.remainingDays
+      },
+      'Quotation validity extended successfully'
+    );
+  } catch (error) {
+    console.error('Extend validity error:', error);
+    ApiResponse.error(res, 'Failed to extend quotation validity', 500);
+  }
+};
+
+/**
+ * Get quotation statistics
+ */
+const getQuotationStats = async (req, res) => {
+  try {
+    const { period = 'month' } = req.query;
+
+    let dateFilter = {};
+    const now = new Date();
+
+    switch (period) {
+      case 'week':
+        dateFilter = {
+          $gte: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+        };
+        break;
+      case 'month':
+        dateFilter = { $gte: new Date(now.getFullYear(), now.getMonth(), 1) };
+        break;
+      case 'year':
+        dateFilter = { $gte: new Date(now.getFullYear(), 0, 1) };
+        break;
+      default:
+        dateFilter = { $gte: new Date(now.getFullYear(), now.getMonth(), 1) };
+    }
+
+    // Base filter for user role
+    const baseFilter =
+      req.user.role === 'admin' ? {} : { createdBy: req.user._id };
+
+    const [totalStats, periodStats, typeStats, statusStats] = await Promise.all(
+      [
+        // Total counts
+        Quotation.aggregate([
+          { $match: baseFilter },
+          {
+            $group: {
+              _id: null,
+              total: { $sum: 1 },
+              totalValue: { $sum: '$pricing.totalAmount' }
+            }
+          }
+        ]),
+
+        // Period-specific stats
+        Quotation.aggregate([
+          { $match: { ...baseFilter, createdAt: dateFilter } },
+          {
+            $group: {
+              _id: null,
+              count: { $sum: 1 },
+              value: { $sum: '$pricing.totalAmount' }
+            }
+          }
+        ]),
+
+        // By type
+        Quotation.aggregate([
+          { $match: baseFilter },
+          {
+            $group: {
+              _id: '$type',
+              count: { $sum: 1 },
+              value: { $sum: '$pricing.totalAmount' }
+            }
+          }
+        ]),
+
+        // By status
+        Quotation.aggregate([
+          { $match: baseFilter },
+          {
+            $group: {
+              _id: '$validity.status',
+              count: { $sum: 1 }
+            }
+          }
+        ])
+      ]
+    );
+
+    const stats = {
+      total: totalStats[0]?.total || 0,
+      totalValue: totalStats[0]?.totalValue || 0,
+      period: {
+        count: periodStats[0]?.count || 0,
+        value: periodStats[0]?.value || 0
+      },
+      byType: typeStats.reduce((acc, stat) => {
+        acc[stat._id] = stat;
+        return acc;
+      }, {}),
+      byStatus: statusStats.reduce((acc, stat) => {
+        acc[stat._id] = stat.count;
+        return acc;
+      }, {})
+    };
+
+    ApiResponse.success(
+      res,
+      { stats },
+      'Quotation statistics retrieved successfully'
+    );
+  } catch (error) {
+    console.error('Get quotation stats error:', error);
+    ApiResponse.error(res, 'Failed to retrieve quotation statistics', 500);
+  }
+};
+
+/**
+ * Generate and download quotation PDF
+ */
+const generateQuotationPDF = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const quotation = await Quotation.findById(id).populate(
+      'createdBy',
+      'fullName email phonePrimary'
+    );
+
+    if (!quotation) {
+      return ApiResponse.error(res, 'Quotation not found', 404);
+    }
+
+    // Check permissions
+    if (
+      req.user.role !== 'admin' &&
+      quotation.createdBy._id.toString() !== req.user._id.toString()
+    ) {
+      return ApiResponse.error(res, 'Access denied', 403);
+    }
+
+    const pdfResult = await pdfService.generateAndUploadQuotationPDF(quotation);
+
+    // Return Cloudinary URL for frontend to handle
+    ApiResponse.success(res, 'PDF generated successfully', {
+      pdfUrl: pdfResult.cloudinaryUrl,
+      fileName: pdfResult.fileName,
+      quotationNumber: quotation.quotationNumber
+    });
+  } catch (error) {
+    console.error('Generate quotation PDF error:', error);
+    ApiResponse.error(res, 'Failed to generate PDF', 500);
+  }
+};
+
+/**
+ * Send quotation PDF via email
+ */
+const sendQuotationPDF = async (req, res) => {
+  try {
+    // Check for validation errors
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return ApiResponse.validationError(res, errors.array());
+    }
+
+    const { id } = req.params;
+    const { recipientEmail, message } = req.body;
+
+    const quotation = await Quotation.findById(id).populate(
+      'createdBy',
+      'fullName email phonePrimary'
+    );
+
+    if (!quotation) {
+      return ApiResponse.error(res, 'Quotation not found', 404);
+    }
+
+    // Check permissions
+    if (
+      req.user.role !== 'admin' &&
+      quotation.createdBy._id.toString() !== req.user._id.toString()
+    ) {
+      return ApiResponse.error(res, 'Access denied', 403);
+    }
+
+    const pdfResult = await pdfService.generateAndUploadQuotationPDF(quotation);
+    const pdfBuffer = pdfResult.pdfBuffer;
+
+    const emailService = require('../services/email.service');
+    await emailService.sendQuotationEmail({
+      to: recipientEmail,
+      quotation,
+      sender: req.user,
+      pdfBuffer,
+      customMessage: message
+    });
+
+    ApiResponse.success(
+      res,
+      {
+        quotationNumber: quotation.quotationNumber,
+        sentTo: recipientEmail
+      },
+      'Quotation PDF sent successfully'
+    );
+  } catch (error) {
+    console.error('Send quotation PDF error:', error);
+    ApiResponse.error(res, 'Failed to send quotation PDF', 500);
+  }
+};
+
+/**
+ * Download quotation PDF directly (streams the PDF file)
+ */
+const downloadQuotationPDF = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const quotation = await Quotation.findById(id).populate(
+      'createdBy',
+      'fullName email phonePrimary'
+    );
+
+    if (!quotation) {
+      return ApiResponse.error(res, 'Quotation not found', 404);
+    }
+
+    // Check permissions
+    if (
+      req.user.role !== 'admin' &&
+      quotation.createdBy._id.toString() !== req.user._id.toString()
+    ) {
+      return ApiResponse.error(res, 'Access denied', 403);
+    }
+
+    const pdfResult = await pdfService.generateAndUploadQuotationPDF(quotation);
+    const pdfBuffer = pdfResult.pdfBuffer;
+
+    // Set headers for PDF download
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="quotation_${quotation.quotationNumber}.pdf"`
+    );
+    res.setHeader('Content-Length', pdfBuffer.length);
+
+    // Stream the PDF buffer
+    res.end(pdfBuffer);
+  } catch (error) {
+    console.error('Download quotation PDF error:', error);
+    ApiResponse.error(res, 'Failed to download PDF', 500);
+  }
+};
+
+module.exports = {
+  getQuotations,
+  getQuotationById,
+  createQuotation,
+  updateQuotation,
+  deleteQuotation,
+  extendValidity,
+  getQuotationStats,
+  generateQuotationPDF,
+  downloadQuotationPDF,
+  sendQuotationPDF
+};

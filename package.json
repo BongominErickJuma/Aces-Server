@@ -1,0 +1,51 @@
+{
+  "name": "aces-movers",
+  "version": "1.0.0",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "nodemon src/server.js",
+    "dev": "node src/server.js",
+    "seed": "node src/utils/seed.js",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix",
+    "format": "prettier --write src/"
+  },
+  "keywords": [
+    "moving",
+    "quotation",
+    "receipt",
+    "pdf"
+  ],
+  "author": "",
+  "license": "ISC",
+  "description": "Aces Movers API for quotations and receipts",
+  "dependencies": {
+    "axios": "^1.11.0",
+    "bcryptjs": "^2.4.3",
+    "cloudinary": "^2.7.0",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "express-rate-limit": "^8.1.0",
+    "express-validator": "^7.0.1",
+    "form-data": "^4.0.4",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^7.5.0",
+    "mongoose-paginate-v2": "^1.9.1",
+    "multer": "^2.0.2",
+    "nodemailer": "^6.9.7",
+    "puppeteer": "^21.0.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.35.0",
+    "colors": "^1.4.0",
+    "eslint": "^9.35.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.4",
+    "nodemon": "^3.0.1",
+    "prettier": "^3.6.2"
+  }
+}
