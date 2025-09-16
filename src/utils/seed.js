@@ -18,7 +18,9 @@ const seedDatabase = async () => {
     console.log('🌱 Starting database seeding...');
 
     // Connect to MongoDB
-    await connectDB();
+    connectDB().then(() => {
+      // Start notification monitoring after DB connection
+    });
 
     // Check if admin user already exists
     const existingAdmin = await User.findOne({ role: 'admin' });
