@@ -26,6 +26,17 @@ class PDFService {
       tin: 'TIN: 1000123456', // Keep as placeholder
       registration: 'REG: 123456789' // Keep as placeholder
     };
+    this.paymentInfo = {
+      bankName: process.env.BANK_NAME || 'EQUITY BANK - NTINDA',
+      bankAccountName: process.env.BANK_ACCOUNT_NAME || 'KAMOGA GEOFREY',
+      bankAccountNumber: process.env.BANK_ACCOUNT_NUMBER || '1044102306223',
+      bankSwiftCode: process.env.BANK_SWIFT_CODE || 'EQBLUGKA',
+      bankSortCode: process.env.BANK_SORT_CODE || '100137',
+      mobileMoneyAccountName:
+        process.env.MOBILE_MONEY_ACCOUNT_NAME || 'KAMOGA GEOFREY',
+      mobileMoneyMTN: process.env.MOBILE_MONEY_MTN || '0778259191',
+      mobileMoneyAirtel: process.env.MOBILE_MONEY_AIRTEL || '0745711730'
+    };
   }
 
   /**
@@ -111,12 +122,9 @@ class PDFService {
     const page = await browser.newPage();
 
     try {
-      // Populate the createdBy field to get payment details (only if it's a Mongoose document)
+      // Populate the createdBy field with signature data (only if it's a Mongoose document)
       if (quotation.populate && typeof quotation.populate === 'function') {
-        await quotation.populate(
-          'createdBy',
-          'fullName bankDetails mobileMoneyDetails phonePrimary address'
-        );
+        await quotation.populate('createdBy', 'fullName phonePrimary address signature');
       }
 
       const html = await this.generateQuotationHTML(quotation);
@@ -148,12 +156,12 @@ class PDFService {
     const page = await browser.newPage();
 
     try {
-      // Populate the createdBy field to get payment details (only if it's a Mongoose document)
+      // Populate the createdBy field with signature data and payment history receivedBy (only if it's a Mongoose document)
       if (receipt.populate && typeof receipt.populate === 'function') {
-        await receipt.populate(
-          'createdBy',
-          'fullName bankDetails mobileMoneyDetails phonePrimary address'
-        );
+        await receipt.populate([
+          { path: 'createdBy', select: 'fullName phonePrimary address signature' },
+          { path: 'payment.paymentHistory.receivedBy', select: 'fullName' }
+        ]);
       }
 
       const html = await this.generateReceiptHTML(receipt);
@@ -299,37 +307,23 @@ class PDFService {
         <div class="payment-info-section">
           <h3>Payment Information</h3>
           <div class="payment-methods">
-            ${quotation.createdBy?.bankDetails ? `
             <div class="payment-method">
               <h4>Bank Transfer</h4>
               <table class="info-table">
-                <tr><td><strong>Bank Name:</strong></td><td>${quotation.createdBy.bankDetails.bankName || 'N/A'}</td></tr>
-                <tr><td><strong>Account Name:</strong></td><td>${quotation.createdBy.bankDetails.accountName || 'N/A'}</td></tr>
-                <tr><td><strong>Account Number:</strong></td><td>${quotation.createdBy.bankDetails.accountNumber || 'N/A'}</td></tr>
-                ${quotation.createdBy.bankDetails.swiftCode ? `<tr><td><strong>SWIFT Code:</strong></td><td>${quotation.createdBy.bankDetails.swiftCode}</td></tr>` : ''}
-                ${quotation.createdBy.bankDetails.branch ? `<tr><td><strong>Branch:</strong></td><td>${quotation.createdBy.bankDetails.branch}</td></tr>` : ''}
+                <tr><td><strong>Bank Name:</strong></td><td>${this.paymentInfo.bankName}</td></tr>
+                <tr><td><strong>Account Name:</strong></td><td>${this.paymentInfo.bankAccountName}</td></tr>
+                <tr><td><strong>Account Number:</strong></td><td>${this.paymentInfo.bankAccountNumber}</td></tr>
+                <tr><td><strong>SWIFT Code:</strong></td><td>${this.paymentInfo.bankSwiftCode}</td></tr>
+                <tr><td><strong>Sort Code:</strong></td><td>${this.paymentInfo.bankSortCode}</td></tr>
               </table>
             </div>
-            ` : ''}
-            
-            ${quotation.createdBy?.mobileMoneyDetails ? `
+
             <div class="payment-method">
               <h4>Mobile Money</h4>
               <table class="info-table">
-                <tr><td><strong>Account Name:</strong></td><td>${quotation.createdBy.fullName || 'N/A'}</td></tr>
-                ${quotation.createdBy.mobileMoneyDetails.mtnNumber ? `<tr><td><strong>MTN Number:</strong></td><td>${quotation.createdBy.mobileMoneyDetails.mtnNumber}</td></tr>` : ''}
-                ${quotation.createdBy.mobileMoneyDetails.airtelNumber ? `<tr><td><strong>Airtel Number:</strong></td><td>${quotation.createdBy.mobileMoneyDetails.airtelNumber}</td></tr>` : ''}
-              </table>
-            </div>
-            ` : ''}
-
-            <div class="payment-method">
-              <h4>Cash Payment</h4>
-              <table class="info-table">
-                <tr><td colspan="2">Cash payments can be made to</td></tr>
-                <tr><td><strong>Contact Person:</strong></td><td>${quotation.createdBy?.fullName || 'Representative'}</td></tr>
-                ${quotation.createdBy?.phonePrimary ? `<tr><td><strong>Phone:</strong></td><td>${quotation.createdBy.phonePrimary}</td></tr>` : ''}
-                ${quotation.createdBy?.address ? `<tr><td><strong>Address:</strong></td><td>${quotation.createdBy.address}</td></tr>` : ''}
+                <tr><td><strong>Account Name:</strong></td><td>${this.paymentInfo.mobileMoneyAccountName}</td></tr>
+                <tr><td><strong>MTN Number:</strong></td><td>${this.paymentInfo.mobileMoneyMTN}</td></tr>
+                <tr><td><strong>Airtel Number:</strong></td><td>${this.paymentInfo.mobileMoneyAirtel}</td></tr>
               </table>
             </div>
           </div>
@@ -356,17 +350,21 @@ class PDFService {
         }
 
         <div class="signature-section">
-          <div class="signature-block">
-            <div class="signature-line"></div>
-            <p><strong>Company Representative</strong></p>
-            <p>${quotation.createdBy?.fullName || 'Authorized Signatory'}</p>
-            <p>Date: _______________</p>
-          </div>
-          <div class="signature-block">
-            <div class="signature-line"></div>
-            <p><strong>Client Signature</strong></p>
-            <p>${quotation.client.name}</p>
-            <p>Date: _______________</p>
+          <div class="signature-block-single">
+            <p><strong>Prepared by:</strong> ${quotation.createdBy?.fullName || 'Authorized Representative'}</p>
+            <div class="signature-line-container">
+              <p><strong>Signature:</strong></p>
+              ${quotation.createdBy?.signature?.data ?
+                `<div class="signature-image-container">
+                  ${quotation.createdBy.signature.type === 'canvas' ?
+                    `<img src="${quotation.createdBy.signature.data}" alt="Signature" class="signature-img" />` :
+                    `<img src="${quotation.createdBy.signature.data}" alt="Signature" class="signature-img" />`
+                  }
+                </div>` :
+                '<div class="signature-placeholder">_____________________</div>'
+              }
+            </div>
+            <p><strong>Date:</strong> ${createdDate}</p>
           </div>
         </div>
 
@@ -387,17 +385,32 @@ class PDFService {
       ? this.formatDate(receipt.locations.movingDate)
       : null;
 
-    // Generate services table
+    // Generate services table - different format for commitment receipts
+    const isCommitmentReceipt = receipt.receiptType === 'commitment';
     const servicesRows = receipt.services
       .map(
-        service => `
+        service => {
+          if (isCommitmentReceipt) {
+            // Commitment receipt without quantity column
+            return `
+      <tr>
+        <td>${service.description}</td>
+        <td class="text-right">${this.formatCurrency(service.amount, receipt.payment.currency)}</td>
+        <td class="text-right">${this.formatCurrency(service.total, receipt.payment.currency)}</td>
+      </tr>
+    `;
+          } else {
+            // Regular receipt with quantity column
+            return `
       <tr>
         <td>${service.description}</td>
         <td class="text-center">${service.quantity || 1}</td>
         <td class="text-right">${this.formatCurrency(service.amount, receipt.payment.currency)}</td>
         <td class="text-right">${this.formatCurrency(service.total, receipt.payment.currency)}</td>
       </tr>
-    `
+    `;
+          }
+        }
       )
       .join('');
 
@@ -410,7 +423,6 @@ class PDFService {
         <td>${this.formatDate(payment.date)}</td>
         <td>${payment.method.replace('_', ' ').toUpperCase()}</td>
         <td class="text-right">${this.formatCurrency(payment.amount, receipt.payment.currency)}</td>
-        <td>${payment.reference || '-'}</td>
         <td>${payment.receivedBy?.fullName || '-'}</td>
       </tr>
     `
@@ -473,12 +485,12 @@ class PDFService {
         }
 
         <div class="services-section">
-          <h3>Services Provided</h3>
+          <h3>${isCommitmentReceipt ? 'Commitment' : 'Services Provided'}</h3>
           <table class="services-table">
             <thead>
               <tr>
                 <th>Description</th>
-                <th>Qty</th>
+                ${isCommitmentReceipt ? '' : '<th>Qty</th>'}
                 <th>Amount</th>
                 <th>Total</th>
               </tr>
@@ -523,7 +535,6 @@ class PDFService {
                   <th>Date</th>
                   <th>Method</th>
                   <th>Amount</th>
-                  <th>Reference</th>
                   <th>Received By</th>
                 </tr>
               </thead>
@@ -549,88 +560,22 @@ class PDFService {
             : ''
         }
 
-        <div class="payment-made-section">
-          <h3>Payment Made</h3>
-          <table class="payment-made-table">
-            <thead>
-              <tr>
-                <th>Payment Mode</th>
-                <th>Amount</th>
-                <th>Reference</th>
-                <th>Received By</th>
-                <th>Signature</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${
-                receipt.payment.paymentHistory?.length > 0
-                  ? receipt.payment.paymentHistory
-                      .map(
-                        payment => `
-                      <tr>
-                        <td>${payment.method.replace('_', ' ').toUpperCase()}</td>
-                        <td>${this.formatCurrency(payment.amount, receipt.payment.currency)}</td>
-                        <td>${payment.reference || '-'}</td>
-                        <td>${payment.receivedBy?.fullName || '-'}</td>
-                        <td class="signature-cell">
-                          <div class="mini-signature-line"></div>
-                        </td>
-                      </tr>
-                    `
-                      )
-                      .join('')
-                  : receipt.payment.status === 'paid' && receipt.payment.amountPaid > 0
-                    ? `
-                    <tr>
-                      <td>${receipt.payment.method ? receipt.payment.method.replace('_', ' ').toUpperCase() : '-'}</td>
-                      <td>${this.formatCurrency(receipt.payment.amountPaid, receipt.payment.currency)}</td>
-                      <td>${receipt.payment.reference || '-'}</td>
-                      <td>${receipt.signatures?.receivedBy || receipt.createdBy?.fullName || '-'}</td>
-                      <td class="signature-cell">
-                        <div class="mini-signature-line"></div>
-                      </td>
-                    </tr>`
-                    : `
-                    <tr>
-                      <td>-</td>
-                      <td>-</td>
-                      <td>-</td>
-                      <td>-</td>
-                      <td class="signature-cell">
-                        <div class="mini-signature-line"></div>
-                      </td>
-                    </tr>`
-              }
-            </tbody>
-          </table>
-          
-          ${
-            receipt.payment.paymentHistory?.length === 0 && receipt.payment.status !== 'paid'
-              ? `
-          <div class="payment-options-info" style="margin-top: 15px; font-size: 10px; color: #666;">
-            <p><strong>Payment Options:</strong></p>
-            ${receipt.createdBy?.bankDetails ? `<p>• <strong>Bank Transfer:</strong> ${receipt.createdBy.bankDetails.bankName || 'N/A'} - Acc: ${receipt.createdBy.bankDetails.accountNumber || 'N/A'} (${receipt.createdBy.bankDetails.accountName || 'N/A'})</p>` : ''}
-            ${receipt.createdBy?.mobileMoneyDetails ? `<p>• <strong>Mobile Money:</strong> ${receipt.createdBy.mobileMoneyDetails.mtnNumber ? `MTN: ${receipt.createdBy.mobileMoneyDetails.mtnNumber}` : ''}${receipt.createdBy.mobileMoneyDetails.mtnNumber && receipt.createdBy.mobileMoneyDetails.airtelNumber ? ' | ' : ''}${receipt.createdBy.mobileMoneyDetails.airtelNumber ? `Airtel: ${receipt.createdBy.mobileMoneyDetails.airtelNumber}` : ''}</p>` : ''}
-            <p>• <strong>Cash:</strong> Contact ${receipt.createdBy?.fullName || 'Representative'}${receipt.createdBy?.phonePrimary ? ` (${receipt.createdBy.phonePrimary})` : ''}</p>
-          </div>`
-              : ''
-          }
-        </div>
-
         <div class="signature-section">
-          <div class="signature-block">
-     
-          <div class="signature-line"></div>
-            <p><strong>Received By</strong></p>
-            <p>${receipt.signatures?.receivedBy || receipt.createdBy?.fullName || 'Company Representative'}</p>
-            <p>${receipt.signatures?.receivedByTitle || ''}</p>
-            <p>Date: ${receipt.signatures?.signatureDate ? this.formatDate(receipt.signatures.signatureDate) : createdDate}</p>
-          </div>
-          <div class="signature-block">
-            <div class="signature-line"></div>
-            <p><strong>Client Signature</strong></p>
-            <p>${receipt.signatures?.clientName || receipt.client.name}</p>
-            <p>Date: _______________</p>
+          <div class="signature-block-single">
+            <p><strong>Prepared by:</strong> ${receipt.createdBy?.fullName || 'Authorized Representative'}</p>
+            <div class="signature-line-container">
+              <p><strong>Signature:</strong></p>
+              ${receipt.createdBy?.signature?.data ?
+                `<div class="signature-image-container">
+                  ${receipt.createdBy.signature.type === 'canvas' ?
+                    `<img src="${receipt.createdBy.signature.data}" alt="Signature" class="signature-img" />` :
+                    `<img src="${receipt.createdBy.signature.data}" alt="Signature" class="signature-img" />`
+                  }
+                </div>` :
+                '<div class="signature-placeholder">_____________________</div>'
+              }
+            </div>
+            <p><strong>Date:</strong> ${createdDate}</p>
           </div>
         </div>
 
@@ -941,6 +886,47 @@ class PDFService {
       .signature-block {
         width: 45%;
         text-align: center;
+      }
+
+      .signature-block-single {
+        width: 100%;
+        margin-top: 30px;
+      }
+
+      .signature-block-single p {
+        margin: 10px 0;
+        font-size: 12px;
+        line-height: 1.6;
+      }
+
+      .signature-line-container {
+        margin: 15px 0;
+      }
+
+      .signature-image-container {
+        margin: 10px 0;
+        padding: 5px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        background: #fafafa;
+        display: inline-block;
+        min-width: 200px;
+        text-align: center;
+      }
+
+      .signature-img {
+        max-width: 180px;
+        max-height: 60px;
+        width: auto;
+        height: auto;
+      }
+
+      .signature-placeholder {
+        display: inline-block;
+        border-bottom: 1px solid #333;
+        min-width: 200px;
+        height: 20px;
+        margin-left: 10px;
       }
 
       .signature-line {

@@ -74,7 +74,6 @@ const getReceipts = async (req, res) => {
       Receipt.find(filter)
         .populate('createdBy', 'fullName email')
         .populate('quotationId', 'quotationNumber type')
-        .populate('commitmentFee.commitmentReceiptId', 'receiptNumber')
         .sort(sort)
         .skip(skip)
         .limit(limitNumber)
@@ -108,7 +107,6 @@ const getReceiptById = async (req, res) => {
     const receipt = await Receipt.findById(id)
       .populate('createdBy', 'fullName email phonePrimary')
       .populate('quotationId', 'quotationNumber type client locations')
-      .populate('commitmentFee.commitmentReceiptId', 'receiptNumber createdAt')
       .populate('payment.paymentHistory.receivedBy', 'fullName')
       .populate('versions.editedBy', 'fullName');
 
@@ -146,18 +144,53 @@ const createReceipt = async (req, res) => {
       req.body.receiptType
     );
 
-    // Calculate service totals
-    const services = req.body.services.map(service => ({
-      ...service,
-      quantity: service.quantity || 1,
-      total: (service.quantity || 1) * service.amount
-    }));
+    let services;
+    let totalAmount;
 
-    // Calculate total amount from services
-    const totalAmount = services.reduce(
-      (sum, service) => sum + service.total,
-      0
-    );
+    // Special handling for commitment receipts - only 3 service items
+    if (req.body.receiptType === 'commitment') {
+      // Extract the commitment fee, total moving amount, and calculate balance
+      const commitmentFeePaid = req.body.commitmentFeePaid || 0;
+      const totalMovingAmount = req.body.totalMovingAmount || 0;
+      const balanceDue = totalMovingAmount - commitmentFeePaid;
+
+      services = [
+        {
+          description: 'Commitment Fee Paid',
+          quantity: 1,
+          amount: commitmentFeePaid,
+          total: commitmentFeePaid
+        },
+        {
+          description: 'Total Amount For Moving',
+          quantity: 1,
+          amount: totalMovingAmount,
+          total: totalMovingAmount
+        },
+        {
+          description: 'Balance Due',
+          quantity: 1,
+          amount: balanceDue,
+          total: balanceDue
+        }
+      ];
+
+      // For commitment receipts, the total amount paid is the commitment fee
+      totalAmount = commitmentFeePaid;
+    } else {
+      // Calculate service totals for other receipt types
+      services = req.body.services.map(service => ({
+        ...service,
+        quantity: service.quantity || 1,
+        total: (service.quantity || 1) * service.amount
+      }));
+
+      // Calculate total amount from services
+      totalAmount = services.reduce(
+        (sum, service) => sum + service.total,
+        0
+      );
+    }
 
     // Create receipt data
     const receiptData = {
@@ -166,9 +199,9 @@ const createReceipt = async (req, res) => {
       services,
       payment: {
         ...req.body.payment,
-        totalAmount,
-        amountPaid: 0,
-        balance: totalAmount
+        totalAmount: req.body.receiptType === 'commitment' ? req.body.totalMovingAmount : totalAmount,
+        amountPaid: req.body.receiptType === 'commitment' ? req.body.commitmentFeePaid || 0 : 0,
+        balance: req.body.receiptType === 'commitment' ? (req.body.totalMovingAmount - req.body.commitmentFeePaid) : totalAmount
       },
       createdBy: req.user._id
     };
@@ -185,29 +218,15 @@ const createReceipt = async (req, res) => {
       { path: 'quotationId', select: 'quotationNumber type' }
     ]);
 
-    // Create notification for admins
+    // Trigger notification via notification service
     try {
-      const User = require('../models/User.model');
-      const admins = await User.find({
-        role: 'admin',
-        status: 'active',
-        _id: { $ne: req.user._id }
-      });
-      const adminIds = admins.map(admin => admin._id);
-
-      if (adminIds.length > 0) {
-        const Notification = require('../models/Notification.model');
-        await Notification.createDocumentNotification(
-          'document_created',
-          'Receipt',
-          receipt._id,
-          receipt.receiptNumber,
-          req.user._id,
-          adminIds
-        );
+      const notificationService = require('../services/notification.service');
+      if (!notificationService.isMonitoring) {
+        // If change streams aren't working, manually trigger notification
+        await notificationService.triggerDocumentNotification('receipt', receipt._id, 'insert');
       }
     } catch (notifError) {
-      console.error('Failed to create notification:', notifError);
+      console.error('Failed to trigger notification:', notifError);
     }
 
     ApiResponse.success(res, { receipt }, 'Receipt created successfully', 201);
@@ -273,13 +292,43 @@ const createFromQuotation = async (req, res) => {
     // Generate receipt number
     const receiptNumber = await Receipt.generateReceiptNumber(receiptType);
 
-    // Convert quotation services to receipt services
-    const services = quotation.services.map(service => ({
-      description: `${service.name} - ${service.description}`,
-      amount: service.unitPrice,
-      quantity: service.quantity,
-      total: service.total
-    }));
+    let services;
+
+    // Special handling for commitment receipts
+    if (receiptType === 'commitment') {
+      const commitmentFeePaid = payment?.commitmentFeePaid || 0;
+      const totalMovingAmount = quotation.pricing.totalAmount;
+      const balanceDue = totalMovingAmount - commitmentFeePaid;
+
+      services = [
+        {
+          description: 'Commitment Fee Paid',
+          quantity: 1,
+          amount: commitmentFeePaid,
+          total: commitmentFeePaid
+        },
+        {
+          description: 'Total Amount For Moving',
+          quantity: 1,
+          amount: totalMovingAmount,
+          total: totalMovingAmount
+        },
+        {
+          description: 'Balance Due',
+          quantity: 1,
+          amount: balanceDue,
+          total: balanceDue
+        }
+      ];
+    } else {
+      // Convert quotation services to receipt services for other types
+      services = quotation.services.map(service => ({
+        description: `${service.name} - ${service.description}`,
+        amount: service.unitPrice,
+        quantity: service.quantity,
+        total: service.total
+      }));
+    }
 
     // Create receipt data from quotation
     const receiptData = {
@@ -296,8 +345,10 @@ const createFromQuotation = async (req, res) => {
       services,
       payment: {
         totalAmount: quotation.pricing.totalAmount,
-        amountPaid: 0,
-        balance: quotation.pricing.totalAmount,
+        amountPaid: receiptType === 'commitment' ? (payment?.commitmentFeePaid || 0) : 0,
+        balance: receiptType === 'commitment'
+          ? (quotation.pricing.totalAmount - (payment?.commitmentFeePaid || 0))
+          : quotation.pricing.totalAmount,
         currency: quotation.pricing.currency,
         status: 'pending',
         ...payment
@@ -361,8 +412,49 @@ const updateReceipt = async (req, res) => {
       return ApiResponse.error(res, 'Access denied', 403);
     }
 
-    // Calculate service totals if services are being updated
-    if (req.body.services) {
+    // Handle commitment receipts specially
+    if (receipt.receiptType === 'commitment' &&
+        (req.body.commitmentFeePaid !== undefined || req.body.totalMovingAmount !== undefined)) {
+      // Extract the commitment fee and total moving amount
+      const commitmentFeePaid = req.body.commitmentFeePaid !== undefined
+        ? req.body.commitmentFeePaid
+        : receipt.services.find(s => s.description === 'Commitment Fee Paid')?.amount || 0;
+
+      const totalMovingAmount = req.body.totalMovingAmount !== undefined
+        ? req.body.totalMovingAmount
+        : receipt.services.find(s => s.description === 'Total Amount For Moving')?.amount || 0;
+
+      const balanceDue = totalMovingAmount - commitmentFeePaid;
+
+      // Generate the 3 service items for commitment receipt
+      req.body.services = [
+        {
+          description: 'Commitment Fee Paid',
+          quantity: 1,
+          amount: commitmentFeePaid,
+          total: commitmentFeePaid
+        },
+        {
+          description: 'Total Amount For Moving',
+          quantity: 1,
+          amount: totalMovingAmount,
+          total: totalMovingAmount
+        },
+        {
+          description: 'Balance Due',
+          quantity: 1,
+          amount: balanceDue,
+          total: balanceDue
+        }
+      ];
+
+      // Update payment info
+      if (!req.body.payment) req.body.payment = {};
+      req.body.payment.totalAmount = totalMovingAmount;
+      req.body.payment.amountPaid = commitmentFeePaid;
+      req.body.payment.balance = balanceDue;
+    } else if (req.body.services) {
+      // Calculate service totals for other receipt types
       req.body.services = req.body.services.map(service => ({
         ...service,
         quantity: service.quantity || 1,
@@ -482,9 +574,16 @@ const addPayment = async (req, res) => {
       return ApiResponse.error(res, 'Receipt is already fully paid', 400);
     }
 
-    const remainingBalance =
-      receipt.payment.totalAmount - receipt.payment.amountPaid;
-    if (amount > remainingBalance) {
+    // Calculate remaining balance with proper rounding to avoid floating point issues
+    const remainingBalance = Math.round(
+      (receipt.payment.totalAmount - receipt.payment.amountPaid) * 100
+    ) / 100;
+
+    // Round the payment amount as well for comparison
+    const roundedAmount = Math.round(amount * 100) / 100;
+
+    // Allow a small tolerance for rounding differences (0.01)
+    if (roundedAmount > remainingBalance + 0.01) {
       return ApiResponse.error(
         res,
         `Payment amount cannot exceed remaining balance of ${remainingBalance}`,
@@ -766,8 +865,8 @@ const downloadReceiptPDF = async (req, res) => {
     }
 
     const pdfService = require('../services/pdf.service');
-    const pdfResult = await pdfService.generateAndUploadReceiptPDF(receipt);
-    const pdfBuffer = pdfResult.pdfBuffer;
+    // Generate PDF buffer directly without uploading to Cloudinary
+    const pdfBuffer = await pdfService.generateReceiptPDF(receipt);
 
     // Set headers for PDF download
     res.setHeader('Content-Type', 'application/pdf');
@@ -777,11 +876,96 @@ const downloadReceiptPDF = async (req, res) => {
     );
     res.setHeader('Content-Length', pdfBuffer.length);
 
-    // Stream the PDF buffer
+    // Stream the PDF buffer directly to user
     res.end(pdfBuffer);
   } catch (error) {
     console.error('Download receipt PDF error:', error);
     ApiResponse.error(res, 'Failed to download PDF', 500);
+  }
+};
+
+/**
+ * Bulk delete receipts
+ */
+const bulkDeleteReceipts = async (req, res) => {
+  try {
+    const { receiptIds } = req.body;
+
+    if (!receiptIds || !Array.isArray(receiptIds) || receiptIds.length === 0) {
+      return ApiResponse.error(res, 'Receipt IDs are required and must be an array', 400);
+    }
+
+    // Only admins can bulk delete
+    if (req.user.role !== 'admin') {
+      return ApiResponse.error(res, 'Access denied. Admin privileges required.', 403);
+    }
+
+    // Find receipts to verify they exist
+    const receipts = await Receipt.find({ _id: { $in: receiptIds } });
+
+    if (receipts.length === 0) {
+      return ApiResponse.error(res, 'No receipts found with the provided IDs', 404);
+    }
+
+    // Delete the receipts
+    const deleteResult = await Receipt.deleteMany({ _id: { $in: receiptIds } });
+
+    ApiResponse.success(
+      res,
+      {
+        deletedCount: deleteResult.deletedCount,
+        requestedCount: receiptIds.length
+      },
+      `Successfully deleted ${deleteResult.deletedCount} receipt(s)`
+    );
+  } catch (error) {
+    console.error('Bulk delete receipts error:', error);
+    ApiResponse.error(res, 'Failed to delete receipts', 500);
+  }
+};
+
+/**
+ * Get bulk download receipts info for frontend to download individually
+ */
+const bulkDownloadReceipts = async (req, res) => {
+  try {
+    const { receiptIds } = req.body;
+
+    if (!receiptIds || !Array.isArray(receiptIds) || receiptIds.length === 0) {
+      return ApiResponse.error(res, 'Receipt IDs are required and must be an array', 400);
+    }
+
+    // Build filter for user permissions
+    const filter = { _id: { $in: receiptIds } };
+    if (req.user.role !== 'admin') {
+      filter.createdBy = req.user._id;
+    }
+
+    // Find receipts with user permission check
+    const receipts = await Receipt.find(filter, 'receiptNumber _id').sort({ createdAt: -1 });
+
+    if (receipts.length === 0) {
+      return ApiResponse.error(res, 'No receipts found or access denied', 404);
+    }
+
+    // Return receipt info for frontend to download individually
+    const downloadInfo = receipts.map(receipt => ({
+      id: receipt._id,
+      receiptNumber: receipt.receiptNumber,
+      downloadUrl: `/api/receipts/${receipt._id}/download`
+    }));
+
+    ApiResponse.success(
+      res,
+      {
+        receipts: downloadInfo,
+        count: receipts.length
+      },
+      `Found ${receipts.length} receipt(s) for bulk download`
+    );
+  } catch (error) {
+    console.error('Bulk download receipts error:', error);
+    ApiResponse.error(res, 'Failed to prepare bulk download', 500);
   }
 };
 
@@ -796,5 +980,7 @@ module.exports = {
   getReceiptStats,
   generateReceiptPDF,
   downloadReceiptPDF,
-  sendReceiptPDF
+  sendReceiptPDF,
+  bulkDeleteReceipts,
+  bulkDownloadReceipts
 };

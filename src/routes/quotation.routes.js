@@ -16,7 +16,9 @@ const {
   getQuotationStats,
   generateQuotationPDF,
   downloadQuotationPDF,
-  sendQuotationPDF
+  sendQuotationPDF,
+  bulkDeleteQuotations,
+  bulkDownloadQuotations
 } = require('../controllers/quotation.controller');
 
 const { authenticate } = require('../middleware/auth.middleware');
@@ -34,6 +36,20 @@ router.use(authenticate);
 
 // Apply profile completion check to document creation/modification routes
 const requireCompleteProfile = [authenticate, validateProfileCompletion];
+
+/**
+ * @route POST /api/quotations/bulk/delete
+ * @desc Bulk delete quotations
+ * @access Admin only
+ */
+router.post('/bulk/delete', bulkDeleteQuotations);
+
+/**
+ * @route POST /api/quotations/bulk/download
+ * @desc Get bulk download quotations info
+ * @access Private (Creator or Admin for each quotation)
+ */
+router.post('/bulk/download', bulkDownloadQuotations);
 
 /**
  * @route GET /api/quotations

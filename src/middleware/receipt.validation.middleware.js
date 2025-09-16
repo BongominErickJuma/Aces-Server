@@ -2,12 +2,26 @@
  * Receipt Validation Middleware
  */
 
-const { body } = require('express-validator');
+const { body, validationResult } = require('express-validator');
 
 const receiptValidation = [
   body('receiptType')
     .isIn(['box', 'commitment', 'final', 'one_time'])
     .withMessage('Receipt type must be box, commitment, final, or one_time'),
+
+  // Custom validation for services based on receipt type
+  body('services').custom((value, { req }) => {
+    if (req.body.receiptType === 'commitment') {
+      // For commitment receipts, services are generated automatically
+      return true;
+    } else {
+      // For other receipt types, services are required
+      if (!value || !Array.isArray(value) || value.length === 0) {
+        throw new Error('At least one service is required for this receipt type');
+      }
+    }
+    return true;
+  }),
 
   body('client.name')
     .trim()
@@ -43,10 +57,6 @@ const receiptValidation = [
 
   body('locations.movingDate').optional().isISO8601().toDate(),
 
-  body('services')
-    .isArray({ min: 1 })
-    .withMessage('At least one service is required'),
-
   body('services.*.description')
     .trim()
     .isLength({ min: 1, max: 500 })
@@ -57,9 +67,12 @@ const receiptValidation = [
     .withMessage('Service amount cannot be negative'),
 
   body('services.*.quantity')
-    .optional()
     .isInt({ min: 1 })
     .withMessage('Quantity must be at least 1'),
+
+  body('services.*.total')
+    .isFloat({ min: 0 })
+    .withMessage('Service total cannot be negative'),
 
   body('payment.currency')
     .isIn(['UGX', 'USD'])
@@ -101,7 +114,30 @@ const receiptValidation = [
     .optional()
     .trim()
     .isLength({ max: 1000 })
-    .withMessage('Notes cannot exceed 1000 characters')
+    .withMessage('Notes cannot exceed 1000 characters'),
+
+  // Commitment receipt specific fields
+  body('commitmentFeePaid')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('Commitment fee must be positive')
+    .custom((value, { req }) => {
+      if (req.body.receiptType === 'commitment' && !value && value !== 0) {
+        throw new Error('Commitment fee is required for commitment receipts');
+      }
+      return true;
+    }),
+
+  body('totalMovingAmount')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('Total moving amount must be positive')
+    .custom((value, { req }) => {
+      if (req.body.receiptType === 'commitment' && !value && value !== 0) {
+        throw new Error('Total moving amount is required for commitment receipts');
+      }
+      return true;
+    })
 ];
 
 const createFromQuotationValidation = [

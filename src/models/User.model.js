@@ -70,57 +70,22 @@ const userSchema = new mongoose.Schema(
     profilePhoto: {
       publicId: {
         type: String,
-        trim: true
+        trim: true,
+        default: 'default_wiyefz'
       },
       url: {
         type: String,
-        trim: true
+        trim: true,
+        default: 'https://res.cloudinary.com/dvedpgxcz/image/upload/v1757960352/default_wiyefz.jpg'
       },
       originalName: {
         type: String,
-        trim: true
+        trim: true,
+        default: 'default.jpg'
       },
       uploadedAt: {
-        type: Date
-      }
-    },
-    bankDetails: {
-      accountNumber: {
-        type: String,
-        trim: true
-      },
-      accountName: {
-        type: String,
-        trim: true,
-        maxlength: [100, 'Account name cannot exceed 100 characters']
-      },
-      bankName: {
-        type: String,
-        trim: true,
-        maxlength: [100, 'Bank name cannot exceed 100 characters']
-      },
-      swiftCode: {
-        type: String,
-        trim: true,
-        uppercase: true,
-        maxlength: [11, 'SWIFT code cannot exceed 11 characters']
-      },
-      branch: {
-        type: String,
-        trim: true,
-        maxlength: [100, 'Branch cannot exceed 100 characters']
-      }
-    },
-    mobileMoneyDetails: {
-      mtnNumber: {
-        type: String,
-        trim: true,
-        match: [/^[+]?[\d\s\-()]{10,}$/, 'Please provide a valid MTN number']
-      },
-      airtelNumber: {
-        type: String,
-        trim: true,
-        match: [/^[+]?[\d\s\-()]{10,}$/, 'Please provide a valid Airtel number']
+        type: Date,
+        default: Date.now
       }
     },
     profileCompleted: {
@@ -145,6 +110,31 @@ const userSchema = new mongoose.Schema(
     passwordResetExpires: {
       type: Date,
       select: false
+    },
+    signature: {
+      type: {
+        type: String,
+        enum: {
+          values: ['canvas', 'upload'],
+          message: 'Signature type must be either canvas or upload'
+        }
+      },
+      data: {
+        type: String,
+        trim: true
+      },
+      publicId: {
+        type: String,
+        trim: true
+      },
+      originalName: {
+        type: String,
+        trim: true
+      },
+      createdAt: {
+        type: Date,
+        default: Date.now
+      }
     }
   },
   {
@@ -190,10 +180,7 @@ userSchema.pre('save', function (next) {
     this.fullName,
     this.email,
     this.phonePrimary,
-    this.emergencyContact,
-    this.bankDetails?.accountNumber,
-    this.bankDetails?.accountName,
-    this.bankDetails?.bankName
+    this.emergencyContact
   ];
 
   this.profileCompleted = requiredFields.every(

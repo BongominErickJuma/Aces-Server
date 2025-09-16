@@ -17,7 +17,9 @@ const {
   getReceiptStats,
   generateReceiptPDF,
   downloadReceiptPDF,
-  sendReceiptPDF
+  sendReceiptPDF,
+  bulkDeleteReceipts,
+  bulkDownloadReceipts
 } = require('../controllers/receipt.controller');
 
 const { authenticate } = require('../middleware/auth.middleware');
@@ -120,5 +122,19 @@ router.get('/:id/download', downloadReceiptPDF);
  * @access Private (Creator or Admin)
  */
 router.post('/:id/send', receiptEmailValidation, sendReceiptPDF);
+
+/**
+ * @route POST /api/receipts/bulk/delete
+ * @desc Bulk delete receipts
+ * @access Admin only
+ */
+router.post('/bulk/delete', bulkDeleteReceipts);
+
+/**
+ * @route POST /api/receipts/bulk/download
+ * @desc Bulk download receipts as merged PDF
+ * @access Private (Creator or Admin)
+ */
+router.post('/bulk/download', bulkDownloadReceipts);
 
 module.exports = router;

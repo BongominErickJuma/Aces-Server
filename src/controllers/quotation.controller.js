@@ -168,29 +168,15 @@ const createQuotation = async (req, res) => {
     // Populate created quotation
     await quotation.populate('createdBy', 'fullName email');
 
-    // Create notification for admins
+    // Trigger notification via notification service
     try {
-      const User = require('../models/User.model');
-      const admins = await User.find({
-        role: 'admin',
-        status: 'active',
-        _id: { $ne: req.user._id }
-      });
-      const adminIds = admins.map(admin => admin._id);
-
-      if (adminIds.length > 0) {
-        const Notification = require('../models/Notification.model');
-        await Notification.createDocumentNotification(
-          'document_created',
-          'Quotation',
-          quotation._id,
-          quotation.quotationNumber,
-          req.user._id,
-          adminIds
-        );
+      const notificationService = require('../services/notification.service');
+      if (!notificationService.isMonitoring) {
+        // If change streams aren't working, manually trigger notification
+        await notificationService.triggerDocumentNotification('quotation', quotation._id, 'insert');
       }
     } catch (notifError) {
-      console.error('Failed to create notification:', notifError);
+      console.error('Failed to trigger notification:', notifError);
     }
 
     ApiResponse.success(
@@ -593,8 +579,8 @@ const downloadQuotationPDF = async (req, res) => {
       return ApiResponse.error(res, 'Access denied', 403);
     }
 
-    const pdfResult = await pdfService.generateAndUploadQuotationPDF(quotation);
-    const pdfBuffer = pdfResult.pdfBuffer;
+    // Generate PDF buffer directly without uploading to Cloudinary
+    const pdfBuffer = await pdfService.generateQuotationPDF(quotation);
 
     // Set headers for PDF download
     res.setHeader('Content-Type', 'application/pdf');
@@ -604,11 +590,92 @@ const downloadQuotationPDF = async (req, res) => {
     );
     res.setHeader('Content-Length', pdfBuffer.length);
 
-    // Stream the PDF buffer
+    // Stream the PDF buffer directly to user
     res.end(pdfBuffer);
   } catch (error) {
     console.error('Download quotation PDF error:', error);
     ApiResponse.error(res, 'Failed to download PDF', 500);
+  }
+};
+
+/**
+ * Bulk delete quotations
+ */
+const bulkDeleteQuotations = async (req, res) => {
+  try {
+    const { quotationIds } = req.body;
+    if (!quotationIds || !Array.isArray(quotationIds) || quotationIds.length === 0) {
+      return ApiResponse.error(res, 'Quotation IDs are required and must be an array', 400);
+    }
+
+    // Only admins can bulk delete
+    if (req.user.role !== 'admin') {
+      return ApiResponse.error(res, 'Access denied. Admin privileges required.', 403);
+    }
+
+    // Find quotations to verify they exist
+    const quotations = await Quotation.find({ _id: { $in: quotationIds } });
+    if (quotations.length === 0) {
+      return ApiResponse.error(res, 'No quotations found with the provided IDs', 404);
+    }
+
+    // Delete the quotations
+    const deleteResult = await Quotation.deleteMany({ _id: { $in: quotationIds } });
+
+    ApiResponse.success(
+      res,
+      {
+        deletedCount: deleteResult.deletedCount,
+        requestedCount: quotationIds.length
+      },
+      `Successfully deleted ${deleteResult.deletedCount} quotation(s)`
+    );
+  } catch (error) {
+    console.error('Bulk delete quotations error:', error);
+    ApiResponse.error(res, 'Failed to delete quotations', 500);
+  }
+};
+
+/**
+ * Get bulk download quotations info for frontend to download individually
+ */
+const bulkDownloadQuotations = async (req, res) => {
+  try {
+    const { quotationIds } = req.body;
+    if (!quotationIds || !Array.isArray(quotationIds) || quotationIds.length === 0) {
+      return ApiResponse.error(res, 'Quotation IDs are required and must be an array', 400);
+    }
+
+    // Build filter for user permissions
+    const filter = { _id: { $in: quotationIds } };
+    if (req.user.role !== 'admin') {
+      filter.createdBy = req.user._id;
+    }
+
+    // Find quotations with user permission check
+    const quotations = await Quotation.find(filter, 'quotationNumber _id').sort({ createdAt: -1 });
+    if (quotations.length === 0) {
+      return ApiResponse.error(res, 'No quotations found or access denied', 404);
+    }
+
+    // Return quotation info for frontend to download individually
+    const downloadInfo = quotations.map(quotation => ({
+      id: quotation._id,
+      quotationNumber: quotation.quotationNumber,
+      downloadUrl: `/api/quotations/${quotation._id}/download`
+    }));
+
+    ApiResponse.success(
+      res,
+      {
+        quotations: downloadInfo,
+        count: quotations.length
+      },
+      `Found ${quotations.length} quotation(s) for bulk download`
+    );
+  } catch (error) {
+    console.error('Bulk download quotations error:', error);
+    ApiResponse.error(res, 'Failed to prepare bulk download', 500);
   }
 };
 
@@ -622,5 +689,7 @@ module.exports = {
   getQuotationStats,
   generateQuotationPDF,
   downloadQuotationPDF,
-  sendQuotationPDF
+  sendQuotationPDF,
+  bulkDeleteQuotations,
+  bulkDownloadQuotations
 };

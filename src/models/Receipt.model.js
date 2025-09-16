@@ -309,18 +309,21 @@ receiptSchema.virtual('daysOverdue').get(function () {
 
 // Pre-save middleware to calculate balance and update payment status
 receiptSchema.pre('save', function (next) {
-  // Calculate balance
+  // Calculate balance with proper rounding to avoid floating point issues
+  const totalAmount = Math.round(this.payment.totalAmount * 100) / 100;
+  const amountPaid = Math.round(this.payment.amountPaid * 100) / 100;
+
   this.payment.balance = Math.max(
     0,
-    this.payment.totalAmount - this.payment.amountPaid
+    Math.round((totalAmount - amountPaid) * 100) / 100
   );
 
   // Update payment status based on amounts
-  if (this.payment.amountPaid === 0) {
+  if (amountPaid === 0) {
     this.payment.status = 'pending';
-  } else if (this.payment.amountPaid < this.payment.totalAmount) {
+  } else if (amountPaid < totalAmount) {
     this.payment.status = 'partial';
-  } else if (this.payment.amountPaid >= this.payment.totalAmount) {
+  } else if (amountPaid >= totalAmount) {
     this.payment.status = 'paid';
   }
 
@@ -349,12 +352,7 @@ receiptSchema.pre('save', function (next) {
     }
   }
 
-  // Final receipts require commitment fee reference
-  if (this.receiptType === 'final' && !this.commitmentFee.commitmentReceiptId) {
-    return next(
-      new Error('Commitment receipt reference is required for final receipts')
-    );
-  }
+  // Removed commitment receipt reference requirement - receipts are now independent
 
   next();
 });
@@ -438,11 +436,14 @@ receiptSchema.methods.addPayment = function (paymentData) {
   // Add to payment history
   this.payment.paymentHistory.push(paymentData);
 
-  // Update total amount paid
-  this.payment.amountPaid = this.payment.paymentHistory.reduce(
+  // Update total amount paid with proper rounding
+  const totalPaid = this.payment.paymentHistory.reduce(
     (sum, payment) => sum + payment.amount,
     0
   );
+
+  // Round to 2 decimal places to avoid floating point issues
+  this.payment.amountPaid = Math.round(totalPaid * 100) / 100;
 
   // Set payment method to the latest one
   this.payment.method = paymentData.method;

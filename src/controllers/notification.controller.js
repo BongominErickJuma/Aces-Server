@@ -22,7 +22,7 @@ const getUserNotifications = asyncHandler(async (req, res) => {
     priority = ''
   } = req.query;
 
-  const userId = req.user.id;
+  const userId = req.user._id;
 
   // Build filter object
   const filter = { userId };
@@ -66,7 +66,7 @@ const getUserNotifications = asyncHandler(async (req, res) => {
  * GET /api/notifications/unread-count
  */
 const getUnreadCount = asyncHandler(async (req, res) => {
-  const userId = req.user.id;
+  const userId = req.user._id;
 
   const count = await Notification.getUnreadCountForUser(userId);
 
@@ -79,7 +79,7 @@ const getUnreadCount = asyncHandler(async (req, res) => {
  */
 const markAsRead = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const userId = req.user.id;
+  const userId = req.user._id;
 
   const notification = await Notification.findOne({
     _id: id,
@@ -103,7 +103,7 @@ const markAsRead = asyncHandler(async (req, res) => {
  */
 const markAsUnread = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const userId = req.user.id;
+  const userId = req.user._id;
 
   const notification = await Notification.findOne({
     _id: id,
@@ -126,7 +126,7 @@ const markAsUnread = asyncHandler(async (req, res) => {
  * PUT /api/notifications/mark-all-read
  */
 const markAllAsRead = asyncHandler(async (req, res) => {
-  const userId = req.user.id;
+  const userId = req.user._id;
 
   const result = await Notification.markAllAsReadForUser(userId);
 
@@ -145,7 +145,7 @@ const markAllAsRead = asyncHandler(async (req, res) => {
  */
 const deleteNotification = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const userId = req.user.id;
+  const userId = req.user._id;
 
   const notification = await Notification.findOneAndDelete({
     _id: id,

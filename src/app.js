@@ -88,6 +88,7 @@ const receiptRoutes = require('./routes/receipt.routes');
 const uploadRoutes = require('./routes/upload.routes');
 const notificationRoutes = require('./routes/notification.routes');
 const dashboardRoutes = require('./routes/dashboard.routes');
+const signatureRoutes = require('./routes/signature.routes');
 
 // API Routes with specific rate limiting
 // app.use('/api/auth', authLimiter, authRoutes); // Rate limiting disabled
@@ -101,6 +102,7 @@ app.use('/api/receipts', receiptRoutes); // Rate limiting disabled
 app.use('/api/uploads', uploadRoutes); // Rate limiting disabled
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/signatures', signatureRoutes);
 
 // Handle unhandled routes (404)
 app.all('*', handleNotFound);

@@ -225,10 +225,13 @@ class NotificationService {
       change;
 
     if (operationType === 'insert') {
-      // New quotation created
+      // New quotation created - notify creator and admins
       const quotation = fullDocument;
-      const allUsers = await User.find({ status: 'active' });
-      const userIds = allUsers.map(user => user._id);
+      const admins = await User.find({ status: 'active', role: 'admin' });
+      const adminIds = admins.map(admin => admin._id);
+
+      // Include creator and relevant stakeholders
+      const stakeholderIds = new Set([...adminIds, quotation.createdBy]);
 
       await Notification.createDocumentNotification(
         'document_created',
@@ -236,7 +239,7 @@ class NotificationService {
         quotation._id,
         quotation.quotationNumber,
         quotation.createdBy,
-        userIds.filter(id => !id.equals(quotation.createdBy))
+        Array.from(stakeholderIds)
       );
     }
 
@@ -248,8 +251,10 @@ class NotificationService {
 
       // Check for conversion to receipt
       if (updateDescription?.updatedFields?.converted === true) {
-        const allUsers = await User.find({ status: 'active' });
-        const userIds = allUsers.map(user => user._id);
+        // Quotation converted - notify all stakeholders (admins + creator)
+        const admins = await User.find({ status: 'active', role: 'admin' });
+        const adminIds = admins.map(admin => admin._id);
+        const stakeholderIds = new Set([...adminIds, quotation.createdBy]);
 
         await Notification.createDocumentNotification(
           'quotation_converted',
@@ -257,14 +262,16 @@ class NotificationService {
           quotation._id,
           quotation.quotationNumber,
           null,
-          userIds
+          Array.from(stakeholderIds)
         );
       }
 
       // Check for status changes
       if (updateDescription?.updatedFields?.status) {
-        const allUsers = await User.find({ status: 'active' });
-        const userIds = allUsers.map(user => user._id);
+        // Document edited - notify all stakeholders (admins + creator per documentation)
+        const admins = await User.find({ status: 'active', role: 'admin' });
+        const adminIds = admins.map(admin => admin._id);
+        const stakeholderIds = new Set([...adminIds, quotation.createdBy]);
 
         await Notification.createDocumentNotification(
           'document_updated',
@@ -272,7 +279,7 @@ class NotificationService {
           quotation._id,
           quotation.quotationNumber,
           null,
-          userIds.filter(id => !id.equals(quotation.createdBy))
+          Array.from(stakeholderIds)
         );
       }
     }
@@ -290,10 +297,13 @@ class NotificationService {
       change;
 
     if (operationType === 'insert') {
-      // New receipt created
+      // New receipt created - notify creator and admins
       const receipt = fullDocument;
-      const allUsers = await User.find({ status: 'active' });
-      const userIds = allUsers.map(user => user._id);
+      const admins = await User.find({ status: 'active', role: 'admin' });
+      const adminIds = admins.map(admin => admin._id);
+
+      // Include creator and relevant stakeholders
+      const stakeholderIds = new Set([...adminIds, receipt.createdBy]);
 
       await Notification.createDocumentNotification(
         'document_created',
@@ -301,7 +311,7 @@ class NotificationService {
         receipt._id,
         receipt.receiptNumber,
         receipt.createdBy,
-        userIds.filter(id => !id.equals(receipt.createdBy))
+        Array.from(stakeholderIds)
       );
     }
 
@@ -313,8 +323,10 @@ class NotificationService {
 
       // Check for payment status changes
       if (updateDescription?.updatedFields?.paymentStatus === 'paid') {
-        const allUsers = await User.find({ status: 'active' });
-        const userIds = allUsers.map(user => user._id);
+        // Payment received - notify creator and admins
+        const admins = await User.find({ status: 'active', role: 'admin' });
+        const adminIds = admins.map(admin => admin._id);
+        const stakeholderIds = new Set([...adminIds, receipt.createdBy]);
 
         await Notification.createDocumentNotification(
           'payment_received',
@@ -322,14 +334,16 @@ class NotificationService {
           receipt._id,
           receipt.receiptNumber,
           null,
-          userIds
+          Array.from(stakeholderIds)
         );
       }
 
       // Check for other status changes
       if (updateDescription?.updatedFields?.status) {
-        const allUsers = await User.find({ status: 'active' });
-        const userIds = allUsers.map(user => user._id);
+        // Document edited - notify all stakeholders (admins + creator per documentation)
+        const admins = await User.find({ status: 'active', role: 'admin' });
+        const adminIds = admins.map(admin => admin._id);
+        const stakeholderIds = new Set([...adminIds, receipt.createdBy]);
 
         await Notification.createDocumentNotification(
           'document_updated',
@@ -337,7 +351,7 @@ class NotificationService {
           receipt._id,
           receipt.receiptNumber,
           null,
-          userIds.filter(id => !id.equals(receipt.createdBy))
+          Array.from(stakeholderIds)
         );
       }
     }
@@ -359,8 +373,10 @@ class NotificationService {
     });
 
     for (const quotation of expiredQuotations) {
-      const allUsers = await User.find({ status: 'active' });
-      const userIds = allUsers.map(user => user._id);
+      // Quotation expired - notify all stakeholders (admins + creator)
+      const admins = await User.find({ status: 'active', role: 'admin' });
+      const adminIds = admins.map(admin => admin._id);
+      const stakeholderIds = new Set([...adminIds, quotation.createdBy]);
 
       await Notification.createDocumentNotification(
         'quotation_expired',
@@ -368,7 +384,7 @@ class NotificationService {
         quotation._id,
         quotation.quotationNumber,
         null,
-        userIds
+        Array.from(stakeholderIds)
       );
 
       // Update quotation status to expired
@@ -394,8 +410,10 @@ class NotificationService {
     });
 
     for (const receipt of overdueReceipts) {
-      const allUsers = await User.find({ status: 'active' });
-      const userIds = allUsers.map(user => user._id);
+      // Payment overdue - notify all stakeholders (admins + creator)
+      const admins = await User.find({ status: 'active', role: 'admin' });
+      const adminIds = admins.map(admin => admin._id);
+      const stakeholderIds = new Set([...adminIds, receipt.createdBy]);
 
       await Notification.createDocumentNotification(
         'payment_overdue',
@@ -403,7 +421,7 @@ class NotificationService {
         receipt._id,
         receipt.receiptNumber,
         null,
-        userIds
+        Array.from(stakeholderIds)
       );
     }
 
@@ -437,6 +455,8 @@ class NotificationService {
    * Start periodic checks (alternative to change streams)
    */
   startPeriodicChecks() {
+    console.log('📡 Starting periodic checks as fallback for change streams');
+
     // Run checks every 10 minutes
     setInterval(
       () => {
@@ -449,6 +469,44 @@ class NotificationService {
     setTimeout(() => {
       this.runPeriodicChecks();
     }, 60 * 1000);
+  }
+
+  /**
+   * Manually trigger notifications for document creation (when change streams unavailable)
+   */
+  async triggerDocumentNotification(documentType, documentId, operationType = 'insert') {
+    try {
+      if (documentType === 'quotation') {
+        const quotation = await Quotation.findById(documentId);
+        if (quotation && operationType === 'insert') {
+          await this.handleQuotationChange({
+            operationType: 'insert',
+            fullDocument: quotation,
+            documentKey: { _id: documentId }
+          });
+        }
+      } else if (documentType === 'receipt') {
+        const receipt = await Receipt.findById(documentId);
+        if (receipt && operationType === 'insert') {
+          await this.handleReceiptChange({
+            operationType: 'insert',
+            fullDocument: receipt,
+            documentKey: { _id: documentId }
+          });
+        }
+      } else if (documentType === 'user') {
+        const user = await User.findById(documentId);
+        if (user && operationType === 'insert') {
+          await this.handleUserChange({
+            operationType: 'insert',
+            fullDocument: user,
+            documentKey: { _id: documentId }
+          });
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error in manual notification trigger:', error);
+    }
   }
 
   /**

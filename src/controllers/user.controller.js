@@ -244,9 +244,7 @@ const updateUser = asyncHandler(async (req, res) => {
     'phonePrimary',
     'phoneSecondary',
     'address',
-    'emergencyContact',
-    'bankDetails',
-    'mobileMoneyDetails'
+    'emergencyContact'
   ];
 
   // Admin can also update role and status
@@ -318,9 +316,7 @@ const updateProfile = asyncHandler(async (req, res) => {
     'phonePrimary',
     'phoneSecondary',
     'address',
-    'emergencyContact',
-    'bankDetails',
-    'mobileMoneyDetails'
+    'emergencyContact'
   ];
 
   // Build update object with only allowed fields
@@ -382,6 +378,146 @@ const deleteUser = asyncHandler(async (req, res) => {
   await user.save();
 
   ApiResponse.success(res, {}, 'User suspended successfully');
+});
+
+/**
+ * Permanently delete user (Admin only)
+ * DELETE /api/users/:id/permanent
+ */
+const deleteUserPermanently = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const user = await User.findById(id);
+  if (!user) {
+    return ApiResponse.notFound(res, 'User not found');
+  }
+
+  // Prevent admin from deleting themselves
+  if (req.user._id.toString() === id) {
+    return ApiResponse.error(res, 'You cannot delete your own account', 400);
+  }
+
+  // Permanent deletion - actually remove the user from database
+  await User.findByIdAndDelete(id);
+
+  ApiResponse.success(res, {}, 'User permanently deleted successfully');
+});
+
+/**
+ * Bulk suspend users (Admin only)
+ * POST /api/users/bulk-suspend
+ */
+const bulkSuspendUsers = asyncHandler(async (req, res) => {
+  const { userIds } = req.body;
+
+  if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+    return ApiResponse.error(res, 'User IDs are required and must be an array', 400);
+  }
+
+  // Filter out current user to prevent self-suspension
+  const currentUserId = req.user._id.toString();
+  const filteredUserIds = userIds.filter(id => id.toString() !== currentUserId);
+
+  if (filteredUserIds.length === 0) {
+    return ApiResponse.error(res, 'No valid users to suspend', 400);
+  }
+
+  // Find users to verify they exist
+  const users = await User.find({ _id: { $in: filteredUserIds } });
+
+  if (users.length === 0) {
+    return ApiResponse.error(res, 'No users found with the provided IDs', 404);
+  }
+
+  // Suspend all users by updating their status
+  const updateResult = await User.updateMany(
+    { _id: { $in: filteredUserIds } },
+    { status: 'suspended' }
+  );
+
+  ApiResponse.success(
+    res,
+    {
+      suspendedCount: updateResult.modifiedCount,
+      requestedCount: userIds.length,
+      foundCount: users.length,
+      skippedCurrentUser: userIds.length !== filteredUserIds.length
+    },
+    `Successfully suspended ${updateResult.modifiedCount} user(s)`
+  );
+});
+
+/**
+ * Bulk reactivate users (Admin only)
+ * POST /api/users/bulk-reactivate
+ */
+const bulkReactivateUsers = asyncHandler(async (req, res) => {
+  const { userIds } = req.body;
+
+  if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+    return ApiResponse.error(res, 'User IDs are required and must be an array', 400);
+  }
+
+  // Filter out current user (though it's less critical for reactivation)
+  const currentUserId = req.user._id.toString();
+  const filteredUserIds = userIds.filter(id => id.toString() !== currentUserId);
+
+  if (filteredUserIds.length === 0) {
+    return ApiResponse.error(res, 'No valid users to reactivate', 400);
+  }
+
+  // Find users to verify they exist
+  const users = await User.find({ _id: { $in: filteredUserIds } });
+
+  if (users.length === 0) {
+    return ApiResponse.error(res, 'No users found with the provided IDs', 404);
+  }
+
+  // Reactivate all users by updating their status to active
+  const updateResult = await User.updateMany(
+    { _id: { $in: filteredUserIds } },
+    { status: 'active' }
+  );
+
+  ApiResponse.success(
+    res,
+    {
+      reactivatedCount: updateResult.modifiedCount,
+      requestedCount: userIds.length,
+      foundCount: users.length,
+      skippedCurrentUser: userIds.length !== filteredUserIds.length
+    },
+    `Successfully reactivated ${updateResult.modifiedCount} user(s)`
+  );
+});
+
+/**
+ * Reactivate user (Admin only)
+ * PUT /api/users/:id/reactivate
+ */
+const reactivateUser = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const user = await User.findById(id);
+  if (!user) {
+    return ApiResponse.notFound(res, 'User not found');
+  }
+
+  if (user.status === 'active') {
+    return ApiResponse.error(res, 'User is already active', 400);
+  }
+
+  // Reactivate user
+  user.status = 'active';
+  await user.save();
+
+  const safeUserData = user.getSafeData();
+
+  ApiResponse.success(
+    res,
+    { user: safeUserData },
+    'User reactivated successfully'
+  );
 });
 
 /**
@@ -449,24 +585,98 @@ const getUserStatistics = asyncHandler(async (req, res) => {
     return ApiResponse.forbidden(res, 'Access denied');
   }
 
-  // TODO: Implement actual statistics when quotation and receipt models are integrated
+  // Import the models
+  const Quotation = require('../models/Quotation.model');
+  const Receipt = require('../models/Receipt.model');
+
+  // Get current date ranges
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const startOfWeek = new Date(now);
+  startOfWeek.setDate(now.getDate() - now.getDay());
+  startOfWeek.setHours(0, 0, 0, 0);
+
+  // Fetch quotation statistics
+  const [totalQuotations, monthQuotations, weekQuotations] = await Promise.all([
+    Quotation.countDocuments({ createdBy: id }),
+    Quotation.countDocuments({
+      createdBy: id,
+      createdAt: { $gte: startOfMonth }
+    }),
+    Quotation.countDocuments({
+      createdBy: id,
+      createdAt: { $gte: startOfWeek }
+    })
+  ]);
+
+  // Fetch receipt statistics
+  const [totalReceipts, monthReceipts, weekReceipts] = await Promise.all([
+    Receipt.countDocuments({ createdBy: id }),
+    Receipt.countDocuments({
+      createdBy: id,
+      createdAt: { $gte: startOfMonth }
+    }),
+    Receipt.countDocuments({
+      createdBy: id,
+      createdAt: { $gte: startOfWeek }
+    })
+  ]);
+
+  // Calculate performance metrics
+  const totalDocuments = totalQuotations + totalReceipts;
+  const userAgeInWeeks = Math.max(1, Math.floor((now - new Date(user.createdAt)) / (7 * 24 * 60 * 60 * 1000)));
+  const averageDocumentsPerWeek = Math.round((totalDocuments / userAgeInWeeks) * 100) / 100;
+
+  // Get most active day of the week
+  const documentsByDay = await Promise.all([
+    Quotation.aggregate([
+      { $match: { createdBy: user._id } },
+      { $group: {
+        _id: { $dayOfWeek: '$createdAt' },
+        count: { $sum: 1 }
+      }}
+    ]),
+    Receipt.aggregate([
+      { $match: { createdBy: user._id } },
+      { $group: {
+        _id: { $dayOfWeek: '$createdAt' },
+        count: { $sum: 1 }
+      }}
+    ])
+  ]);
+
+  // Combine and find most active day
+  const dayActivity = {};
+  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+  documentsByDay.forEach(docs => {
+    docs.forEach(day => {
+      const dayName = dayNames[day._id - 1] || 'Monday';
+      dayActivity[dayName] = (dayActivity[dayName] || 0) + day.count;
+    });
+  });
+
+  const mostActiveDay = Object.keys(dayActivity).length > 0
+    ? Object.entries(dayActivity).reduce((a, b) => a[1] > b[1] ? a : b)[0]
+    : 'No activity yet';
+
   const statistics = {
     documents: {
       quotations: {
-        total: 0,
-        thisMonth: 0,
-        thisWeek: 0
+        total: totalQuotations,
+        thisMonth: monthQuotations,
+        thisWeek: weekQuotations
       },
       receipts: {
-        total: 0,
-        thisMonth: 0,
-        thisWeek: 0
+        total: totalReceipts,
+        thisMonth: monthReceipts,
+        thisWeek: weekReceipts
       }
     },
     performance: {
-      totalDocuments: 0,
-      averageDocumentsPerWeek: 0,
-      mostActiveDay: 'Monday',
+      totalDocuments,
+      averageDocumentsPerWeek,
+      mostActiveDay,
       joinDate: user.createdAt,
       lastActive: user.lastLogin
     }
@@ -509,13 +719,7 @@ function getMissingProfileFields(user) {
     { field: 'fullName', value: user.fullName },
     { field: 'email', value: user.email },
     { field: 'phonePrimary', value: user.phonePrimary },
-    { field: 'emergencyContact', value: user.emergencyContact },
-    {
-      field: 'bankDetails.accountNumber',
-      value: user.bankDetails?.accountNumber
-    },
-    { field: 'bankDetails.accountName', value: user.bankDetails?.accountName },
-    { field: 'bankDetails.bankName', value: user.bankDetails?.bankName }
+    { field: 'emergencyContact', value: user.emergencyContact }
   ];
 
   return requiredFields
@@ -530,6 +734,10 @@ module.exports = {
   updateUser,
   updateProfile,
   deleteUser,
+  deleteUserPermanently,
+  bulkSuspendUsers,
+  bulkReactivateUsers,
+  reactivateUser,
   changePassword,
   getUserStatistics,
   uploadAvatar

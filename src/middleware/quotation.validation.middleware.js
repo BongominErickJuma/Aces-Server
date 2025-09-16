@@ -6,8 +6,8 @@ const { body } = require('express-validator');
 
 const quotationValidation = [
   body('type')
-    .isIn(['Residential Move', 'International Move', 'Office Move'])
-    .withMessage('Type must be Residential Move, International Move, or Office Move'),
+    .isIn(['Residential', 'International', 'Office'])
+    .withMessage('Type must be Residential, International, or Office'),
 
   body('client.name')
     .trim()

@@ -26,7 +26,7 @@ const {
 // Rate limiting for user operations
 const userOperationRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // 100 requests per window for authenticated users
+  max: 1000, // 100 requests per window for authenticated users
   message: {
     success: false,
     error: {
@@ -51,7 +51,6 @@ const passwordChangeRateLimit = rateLimit({
   standardHeaders: true,
   legacyHeaders: false
 });
-
 /**
  * GET /api/users
  * Get all users with pagination and filtering (Admin only)
@@ -161,6 +160,56 @@ router.delete(
   userOperationRateLimit,
   validateObjectId,
   userController.deleteUser
+);
+
+/**
+ * DELETE /api/users/:id/permanent
+ * Permanently delete user (Admin only)
+ */
+router.delete(
+  '/:id/permanent',
+  authenticate,
+  requireAdmin,
+  userOperationRateLimit,
+  validateObjectId,
+  userController.deleteUserPermanently
+);
+
+/**
+ * POST /api/users/bulk-suspend
+ * Bulk suspend users (Admin only)
+ */
+router.post(
+  '/bulk-suspend',
+  authenticate,
+  requireAdmin,
+  userOperationRateLimit,
+  userController.bulkSuspendUsers
+);
+
+/**
+ * POST /api/users/bulk-reactivate
+ * Bulk reactivate users (Admin only)
+ */
+router.post(
+  '/bulk-reactivate',
+  authenticate,
+  requireAdmin,
+  userOperationRateLimit,
+  userController.bulkReactivateUsers
+);
+
+/**
+ * PUT /api/users/:id/reactivate
+ * Reactivate suspended user (Admin only)
+ */
+router.put(
+  '/:id/reactivate',
+  authenticate,
+  requireAdmin,
+  userOperationRateLimit,
+  validateObjectId,
+  userController.reactivateUser
 );
 
 /**
