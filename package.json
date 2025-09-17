@@ -21,6 +21,7 @@
   "license": "ISC",
   "description": "Aces Movers API for quotations and receipts",
   "dependencies": {
+    "@sparticuz/chromium": "^118.0.0",
     "axios": "^1.11.0",
     "bcryptjs": "^2.4.3",
     "cloudinary": "^2.7.0",
@@ -37,8 +38,8 @@
     "mongoose-paginate-v2": "^1.9.1",
     "multer": "^2.0.2",
     "nodemailer": "^6.9.7",
-    "puppeteer-core": "^21.0.1",
-    "@sparticuz/chromium": "^118.0.0"
+    "puppeteer": "^24.22.0",
+    "puppeteer-core": "^21.0.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.35.0",

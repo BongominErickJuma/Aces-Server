@@ -5,6 +5,7 @@
 
 const puppeteer = require('puppeteer-core');
 const chromium = require('@sparticuz/chromium');
+const puppeteerRegular = require('puppeteer');
 const fs = require('fs').promises;
 const path = require('path');
 const cloudinary = require('../config/cloudinary.config');
@@ -50,8 +51,8 @@ class PDFService {
 
       // Use different configurations for development vs production
       if (isDev && isWindows) {
-        // For Windows development, use local Chrome if available
-        this.browser = await puppeteer.launch({
+        // For Windows development, use regular puppeteer with bundled chromium
+        this.browser = await puppeteerRegular.launch({
           headless: true,
           args: [
             '--no-sandbox',
