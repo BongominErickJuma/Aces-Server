@@ -38,8 +38,7 @@
     "multer": "^2.0.2",
     "nodemailer": "^6.9.7",
     "puppeteer-core": "^21.0.1",
-    "@sparticuz/chromium": "^118.0.0",
-    "puppeteer": "^21.0.1"
+    "@sparticuz/chromium": "^118.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.35.0",

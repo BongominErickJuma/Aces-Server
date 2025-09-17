@@ -3,18 +3,8 @@
  * Handles PDF generation for quotations and receipts using Puppeteer
  */
 
+const puppeteer = require('puppeteer-core');
 const chromium = require('@sparticuz/chromium');
-
-// Use different puppeteer imports based on environment
-let puppeteer;
-const isDev = process.env.NODE_ENV === 'development';
-const isWindows = process.platform === 'win32';
-
-if (isDev && isWindows) {
-  puppeteer = require('puppeteer'); // Full puppeteer for local development
-} else {
-  puppeteer = require('puppeteer-core'); // Core for production
-}
 const fs = require('fs').promises;
 const path = require('path');
 const cloudinary = require('../config/cloudinary.config');
