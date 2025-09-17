@@ -76,7 +76,8 @@ const userSchema = new mongoose.Schema(
       url: {
         type: String,
         trim: true,
-        default: 'https://res.cloudinary.com/dvedpgxcz/image/upload/v1757960352/default_wiyefz.jpg'
+        default:
+          'https://res.cloudinary.com/dvedpgxcz/image/upload/v1757960352/default_wiyefz.jpg'
       },
       originalName: {
         type: String,

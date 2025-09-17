@@ -3,7 +3,6 @@
  * Implements rate limiting, security headers, and other security measures
  */
 
-const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
 const ApiResponse = require('../utils/response');
 

@@ -2,7 +2,7 @@
  * Receipt Validation Middleware
  */
 
-const { body, validationResult } = require('express-validator');
+const { body } = require('express-validator');
 
 const receiptValidation = [
   body('receiptType')
@@ -17,7 +17,9 @@ const receiptValidation = [
     } else {
       // For other receipt types, services are required
       if (!value || !Array.isArray(value) || value.length === 0) {
-        throw new Error('At least one service is required for this receipt type');
+        throw new Error(
+          'At least one service is required for this receipt type'
+        );
       }
     }
     return true;
@@ -134,7 +136,9 @@ const receiptValidation = [
     .withMessage('Total moving amount must be positive')
     .custom((value, { req }) => {
       if (req.body.receiptType === 'commitment' && !value && value !== 0) {
-        throw new Error('Total moving amount is required for commitment receipts');
+        throw new Error(
+          'Total moving amount is required for commitment receipts'
+        );
       }
       return true;
     })

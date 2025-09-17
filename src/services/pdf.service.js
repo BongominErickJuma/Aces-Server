@@ -124,7 +124,10 @@ class PDFService {
     try {
       // Populate the createdBy field with signature data (only if it's a Mongoose document)
       if (quotation.populate && typeof quotation.populate === 'function') {
-        await quotation.populate('createdBy', 'fullName phonePrimary address signature');
+        await quotation.populate(
+          'createdBy',
+          'fullName phonePrimary address signature'
+        );
       }
 
       const html = await this.generateQuotationHTML(quotation);
@@ -159,7 +162,10 @@ class PDFService {
       // Populate the createdBy field with signature data and payment history receivedBy (only if it's a Mongoose document)
       if (receipt.populate && typeof receipt.populate === 'function') {
         await receipt.populate([
-          { path: 'createdBy', select: 'fullName phonePrimary address signature' },
+          {
+            path: 'createdBy',
+            select: 'fullName phonePrimary address signature'
+          },
           { path: 'payment.paymentHistory.receivedBy', select: 'fullName' }
         ]);
       }
@@ -354,14 +360,16 @@ class PDFService {
             <p><strong>Prepared by:</strong> ${quotation.createdBy?.fullName || 'Authorized Representative'}</p>
             <div class="signature-line-container">
               <p><strong>Signature:</strong></p>
-              ${quotation.createdBy?.signature?.data ?
-                `<div class="signature-image-container">
-                  ${quotation.createdBy.signature.type === 'canvas' ?
-                    `<img src="${quotation.createdBy.signature.data}" alt="Signature" class="signature-img" />` :
-                    `<img src="${quotation.createdBy.signature.data}" alt="Signature" class="signature-img" />`
+              ${
+                quotation.createdBy?.signature?.data
+                  ? `<div class="signature-image-container">
+                  ${
+                    quotation.createdBy.signature.type === 'canvas'
+                      ? `<img src="${quotation.createdBy.signature.data}" alt="Signature" class="signature-img" />`
+                      : `<img src="${quotation.createdBy.signature.data}" alt="Signature" class="signature-img" />`
                   }
-                </div>` :
-                '<div class="signature-placeholder">_____________________</div>'
+                </div>`
+                  : '<div class="signature-placeholder">_____________________</div>'
               }
             </div>
             <p><strong>Date:</strong> ${createdDate}</p>
@@ -388,20 +396,19 @@ class PDFService {
     // Generate services table - different format for commitment receipts
     const isCommitmentReceipt = receipt.receiptType === 'commitment';
     const servicesRows = receipt.services
-      .map(
-        service => {
-          if (isCommitmentReceipt) {
-            // Commitment receipt without quantity column
-            return `
+      .map(service => {
+        if (isCommitmentReceipt) {
+          // Commitment receipt without quantity column
+          return `
       <tr>
         <td>${service.description}</td>
         <td class="text-right">${this.formatCurrency(service.amount, receipt.payment.currency)}</td>
         <td class="text-right">${this.formatCurrency(service.total, receipt.payment.currency)}</td>
       </tr>
     `;
-          } else {
-            // Regular receipt with quantity column
-            return `
+        } else {
+          // Regular receipt with quantity column
+          return `
       <tr>
         <td>${service.description}</td>
         <td class="text-center">${service.quantity || 1}</td>
@@ -409,9 +416,8 @@ class PDFService {
         <td class="text-right">${this.formatCurrency(service.total, receipt.payment.currency)}</td>
       </tr>
     `;
-          }
         }
-      )
+      })
       .join('');
 
     // Generate payment history if exists
@@ -565,14 +571,16 @@ class PDFService {
             <p><strong>Prepared by:</strong> ${receipt.createdBy?.fullName || 'Authorized Representative'}</p>
             <div class="signature-line-container">
               <p><strong>Signature:</strong></p>
-              ${receipt.createdBy?.signature?.data ?
-                `<div class="signature-image-container">
-                  ${receipt.createdBy.signature.type === 'canvas' ?
-                    `<img src="${receipt.createdBy.signature.data}" alt="Signature" class="signature-img" />` :
-                    `<img src="${receipt.createdBy.signature.data}" alt="Signature" class="signature-img" />`
+              ${
+                receipt.createdBy?.signature?.data
+                  ? `<div class="signature-image-container">
+                  ${
+                    receipt.createdBy.signature.type === 'canvas'
+                      ? `<img src="${receipt.createdBy.signature.data}" alt="Signature" class="signature-img" />`
+                      : `<img src="${receipt.createdBy.signature.data}" alt="Signature" class="signature-img" />`
                   }
-                </div>` :
-                '<div class="signature-placeholder">_____________________</div>'
+                </div>`
+                  : '<div class="signature-placeholder">_____________________</div>'
               }
             </div>
             <p><strong>Date:</strong> ${createdDate}</p>

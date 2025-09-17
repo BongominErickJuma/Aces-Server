@@ -411,7 +411,11 @@ const bulkSuspendUsers = asyncHandler(async (req, res) => {
   const { userIds } = req.body;
 
   if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
-    return ApiResponse.error(res, 'User IDs are required and must be an array', 400);
+    return ApiResponse.error(
+      res,
+      'User IDs are required and must be an array',
+      400
+    );
   }
 
   // Filter out current user to prevent self-suspension
@@ -455,7 +459,11 @@ const bulkReactivateUsers = asyncHandler(async (req, res) => {
   const { userIds } = req.body;
 
   if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
-    return ApiResponse.error(res, 'User IDs are required and must be an array', 400);
+    return ApiResponse.error(
+      res,
+      'User IDs are required and must be an array',
+      400
+    );
   }
 
   // Filter out current user (though it's less critical for reactivation)
@@ -624,30 +632,46 @@ const getUserStatistics = asyncHandler(async (req, res) => {
 
   // Calculate performance metrics
   const totalDocuments = totalQuotations + totalReceipts;
-  const userAgeInWeeks = Math.max(1, Math.floor((now - new Date(user.createdAt)) / (7 * 24 * 60 * 60 * 1000)));
-  const averageDocumentsPerWeek = Math.round((totalDocuments / userAgeInWeeks) * 100) / 100;
+  const userAgeInWeeks = Math.max(
+    1,
+    Math.floor((now - new Date(user.createdAt)) / (7 * 24 * 60 * 60 * 1000))
+  );
+  const averageDocumentsPerWeek =
+    Math.round((totalDocuments / userAgeInWeeks) * 100) / 100;
 
   // Get most active day of the week
   const documentsByDay = await Promise.all([
     Quotation.aggregate([
       { $match: { createdBy: user._id } },
-      { $group: {
-        _id: { $dayOfWeek: '$createdAt' },
-        count: { $sum: 1 }
-      }}
+      {
+        $group: {
+          _id: { $dayOfWeek: '$createdAt' },
+          count: { $sum: 1 }
+        }
+      }
     ]),
     Receipt.aggregate([
       { $match: { createdBy: user._id } },
-      { $group: {
-        _id: { $dayOfWeek: '$createdAt' },
-        count: { $sum: 1 }
-      }}
+      {
+        $group: {
+          _id: { $dayOfWeek: '$createdAt' },
+          count: { $sum: 1 }
+        }
+      }
     ])
   ]);
 
   // Combine and find most active day
   const dayActivity = {};
-  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const dayNames = [
+    'Sunday',
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday'
+  ];
 
   documentsByDay.forEach(docs => {
     docs.forEach(day => {
@@ -656,9 +680,10 @@ const getUserStatistics = asyncHandler(async (req, res) => {
     });
   });
 
-  const mostActiveDay = Object.keys(dayActivity).length > 0
-    ? Object.entries(dayActivity).reduce((a, b) => a[1] > b[1] ? a : b)[0]
-    : 'No activity yet';
+  const mostActiveDay =
+    Object.keys(dayActivity).length > 0
+      ? Object.entries(dayActivity).reduce((a, b) => (a[1] > b[1] ? a : b))[0]
+      : 'No activity yet';
 
   const statistics = {
     documents: {

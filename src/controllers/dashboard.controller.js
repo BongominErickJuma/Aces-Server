@@ -7,7 +7,6 @@ const User = require('../models/User.model');
 const Quotation = require('../models/Quotation.model');
 const Receipt = require('../models/Receipt.model');
 const Notification = require('../models/Notification.model');
-const AuditLog = require('../models/AuditLog.model');
 const ApiResponse = require('../utils/response');
 const { asyncHandler } = require('../middleware/errorHandler.middleware');
 
@@ -249,7 +248,9 @@ const getRecentDocuments = asyncHandler(async (req, res) => {
       .populate('createdBy', 'fullName email')
       .sort({ createdAt: -1 })
       .limit(limitNum)
-      .select('quotationNumber type client pricing validity createdAt createdBy');
+      .select(
+        'quotationNumber type client pricing validity createdAt createdBy'
+      );
   }
 
   if (type === 'receipts' || type === 'all') {

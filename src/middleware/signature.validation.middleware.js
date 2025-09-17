@@ -23,7 +23,7 @@ const signatureValidationRules = [
 
   body('data')
     .if(body('type').equals('canvas'))
-    .custom((value) => {
+    .custom(value => {
       // Check base64 size (approximate file size)
       const base64Data = value.split(',')[1];
       const sizeInBytes = (base64Data.length * 3) / 4;

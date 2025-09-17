@@ -474,7 +474,11 @@ class NotificationService {
   /**
    * Manually trigger notifications for document creation (when change streams unavailable)
    */
-  async triggerDocumentNotification(documentType, documentId, operationType = 'insert') {
+  async triggerDocumentNotification(
+    documentType,
+    documentId,
+    operationType = 'insert'
+  ) {
     try {
       if (documentType === 'quotation') {
         const quotation = await Quotation.findById(documentId);

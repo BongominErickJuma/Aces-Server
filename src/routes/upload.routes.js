@@ -18,9 +18,7 @@ const {
 } = require('../controllers/upload.controller');
 
 const { authenticate, requireAdmin } = require('../middleware/auth.middleware');
-const {
-  validateProfileCompletion
-} = require('../middleware/validation.middleware');
+
 const {
   uploadProfilePhoto: uploadProfilePhotoMiddleware,
   uploadCompanyLogo: uploadCompanyLogoMiddleware,

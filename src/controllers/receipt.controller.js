@@ -186,10 +186,7 @@ const createReceipt = async (req, res) => {
       }));
 
       // Calculate total amount from services
-      totalAmount = services.reduce(
-        (sum, service) => sum + service.total,
-        0
-      );
+      totalAmount = services.reduce((sum, service) => sum + service.total, 0);
     }
 
     // Create receipt data
@@ -199,9 +196,18 @@ const createReceipt = async (req, res) => {
       services,
       payment: {
         ...req.body.payment,
-        totalAmount: req.body.receiptType === 'commitment' ? req.body.totalMovingAmount : totalAmount,
-        amountPaid: req.body.receiptType === 'commitment' ? req.body.commitmentFeePaid || 0 : 0,
-        balance: req.body.receiptType === 'commitment' ? (req.body.totalMovingAmount - req.body.commitmentFeePaid) : totalAmount
+        totalAmount:
+          req.body.receiptType === 'commitment'
+            ? req.body.totalMovingAmount
+            : totalAmount,
+        amountPaid:
+          req.body.receiptType === 'commitment'
+            ? req.body.commitmentFeePaid || 0
+            : 0,
+        balance:
+          req.body.receiptType === 'commitment'
+            ? req.body.totalMovingAmount - req.body.commitmentFeePaid
+            : totalAmount
       },
       createdBy: req.user._id
     };
@@ -223,7 +229,11 @@ const createReceipt = async (req, res) => {
       const notificationService = require('../services/notification.service');
       if (!notificationService.isMonitoring) {
         // If change streams aren't working, manually trigger notification
-        await notificationService.triggerDocumentNotification('receipt', receipt._id, 'insert');
+        await notificationService.triggerDocumentNotification(
+          'receipt',
+          receipt._id,
+          'insert'
+        );
       }
     } catch (notifError) {
       console.error('Failed to trigger notification:', notifError);
@@ -345,10 +355,12 @@ const createFromQuotation = async (req, res) => {
       services,
       payment: {
         totalAmount: quotation.pricing.totalAmount,
-        amountPaid: receiptType === 'commitment' ? (payment?.commitmentFeePaid || 0) : 0,
-        balance: receiptType === 'commitment'
-          ? (quotation.pricing.totalAmount - (payment?.commitmentFeePaid || 0))
-          : quotation.pricing.totalAmount,
+        amountPaid:
+          receiptType === 'commitment' ? payment?.commitmentFeePaid || 0 : 0,
+        balance:
+          receiptType === 'commitment'
+            ? quotation.pricing.totalAmount - (payment?.commitmentFeePaid || 0)
+            : quotation.pricing.totalAmount,
         currency: quotation.pricing.currency,
         status: 'pending',
         ...payment
@@ -413,16 +425,24 @@ const updateReceipt = async (req, res) => {
     }
 
     // Handle commitment receipts specially
-    if (receipt.receiptType === 'commitment' &&
-        (req.body.commitmentFeePaid !== undefined || req.body.totalMovingAmount !== undefined)) {
+    if (
+      receipt.receiptType === 'commitment' &&
+      (req.body.commitmentFeePaid !== undefined ||
+        req.body.totalMovingAmount !== undefined)
+    ) {
       // Extract the commitment fee and total moving amount
-      const commitmentFeePaid = req.body.commitmentFeePaid !== undefined
-        ? req.body.commitmentFeePaid
-        : receipt.services.find(s => s.description === 'Commitment Fee Paid')?.amount || 0;
+      const commitmentFeePaid =
+        req.body.commitmentFeePaid !== undefined
+          ? req.body.commitmentFeePaid
+          : receipt.services.find(s => s.description === 'Commitment Fee Paid')
+              ?.amount || 0;
 
-      const totalMovingAmount = req.body.totalMovingAmount !== undefined
-        ? req.body.totalMovingAmount
-        : receipt.services.find(s => s.description === 'Total Amount For Moving')?.amount || 0;
+      const totalMovingAmount =
+        req.body.totalMovingAmount !== undefined
+          ? req.body.totalMovingAmount
+          : receipt.services.find(
+              s => s.description === 'Total Amount For Moving'
+            )?.amount || 0;
 
       const balanceDue = totalMovingAmount - commitmentFeePaid;
 
@@ -575,9 +595,10 @@ const addPayment = async (req, res) => {
     }
 
     // Calculate remaining balance with proper rounding to avoid floating point issues
-    const remainingBalance = Math.round(
-      (receipt.payment.totalAmount - receipt.payment.amountPaid) * 100
-    ) / 100;
+    const remainingBalance =
+      Math.round(
+        (receipt.payment.totalAmount - receipt.payment.amountPaid) * 100
+      ) / 100;
 
     // Round the payment amount as well for comparison
     const roundedAmount = Math.round(amount * 100) / 100;
@@ -892,19 +913,31 @@ const bulkDeleteReceipts = async (req, res) => {
     const { receiptIds } = req.body;
 
     if (!receiptIds || !Array.isArray(receiptIds) || receiptIds.length === 0) {
-      return ApiResponse.error(res, 'Receipt IDs are required and must be an array', 400);
+      return ApiResponse.error(
+        res,
+        'Receipt IDs are required and must be an array',
+        400
+      );
     }
 
     // Only admins can bulk delete
     if (req.user.role !== 'admin') {
-      return ApiResponse.error(res, 'Access denied. Admin privileges required.', 403);
+      return ApiResponse.error(
+        res,
+        'Access denied. Admin privileges required.',
+        403
+      );
     }
 
     // Find receipts to verify they exist
     const receipts = await Receipt.find({ _id: { $in: receiptIds } });
 
     if (receipts.length === 0) {
-      return ApiResponse.error(res, 'No receipts found with the provided IDs', 404);
+      return ApiResponse.error(
+        res,
+        'No receipts found with the provided IDs',
+        404
+      );
     }
 
     // Delete the receipts
@@ -932,7 +965,11 @@ const bulkDownloadReceipts = async (req, res) => {
     const { receiptIds } = req.body;
 
     if (!receiptIds || !Array.isArray(receiptIds) || receiptIds.length === 0) {
-      return ApiResponse.error(res, 'Receipt IDs are required and must be an array', 400);
+      return ApiResponse.error(
+        res,
+        'Receipt IDs are required and must be an array',
+        400
+      );
     }
 
     // Build filter for user permissions
@@ -942,7 +979,9 @@ const bulkDownloadReceipts = async (req, res) => {
     }
 
     // Find receipts with user permission check
-    const receipts = await Receipt.find(filter, 'receiptNumber _id').sort({ createdAt: -1 });
+    const receipts = await Receipt.find(filter, 'receiptNumber _id').sort({
+      createdAt: -1
+    });
 
     if (receipts.length === 0) {
       return ApiResponse.error(res, 'No receipts found or access denied', 404);

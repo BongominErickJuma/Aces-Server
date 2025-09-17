@@ -173,7 +173,11 @@ const createQuotation = async (req, res) => {
       const notificationService = require('../services/notification.service');
       if (!notificationService.isMonitoring) {
         // If change streams aren't working, manually trigger notification
-        await notificationService.triggerDocumentNotification('quotation', quotation._id, 'insert');
+        await notificationService.triggerDocumentNotification(
+          'quotation',
+          quotation._id,
+          'insert'
+        );
       }
     } catch (notifError) {
       console.error('Failed to trigger notification:', notifError);
@@ -604,23 +608,41 @@ const downloadQuotationPDF = async (req, res) => {
 const bulkDeleteQuotations = async (req, res) => {
   try {
     const { quotationIds } = req.body;
-    if (!quotationIds || !Array.isArray(quotationIds) || quotationIds.length === 0) {
-      return ApiResponse.error(res, 'Quotation IDs are required and must be an array', 400);
+    if (
+      !quotationIds ||
+      !Array.isArray(quotationIds) ||
+      quotationIds.length === 0
+    ) {
+      return ApiResponse.error(
+        res,
+        'Quotation IDs are required and must be an array',
+        400
+      );
     }
 
     // Only admins can bulk delete
     if (req.user.role !== 'admin') {
-      return ApiResponse.error(res, 'Access denied. Admin privileges required.', 403);
+      return ApiResponse.error(
+        res,
+        'Access denied. Admin privileges required.',
+        403
+      );
     }
 
     // Find quotations to verify they exist
     const quotations = await Quotation.find({ _id: { $in: quotationIds } });
     if (quotations.length === 0) {
-      return ApiResponse.error(res, 'No quotations found with the provided IDs', 404);
+      return ApiResponse.error(
+        res,
+        'No quotations found with the provided IDs',
+        404
+      );
     }
 
     // Delete the quotations
-    const deleteResult = await Quotation.deleteMany({ _id: { $in: quotationIds } });
+    const deleteResult = await Quotation.deleteMany({
+      _id: { $in: quotationIds }
+    });
 
     ApiResponse.success(
       res,
@@ -642,8 +664,16 @@ const bulkDeleteQuotations = async (req, res) => {
 const bulkDownloadQuotations = async (req, res) => {
   try {
     const { quotationIds } = req.body;
-    if (!quotationIds || !Array.isArray(quotationIds) || quotationIds.length === 0) {
-      return ApiResponse.error(res, 'Quotation IDs are required and must be an array', 400);
+    if (
+      !quotationIds ||
+      !Array.isArray(quotationIds) ||
+      quotationIds.length === 0
+    ) {
+      return ApiResponse.error(
+        res,
+        'Quotation IDs are required and must be an array',
+        400
+      );
     }
 
     // Build filter for user permissions
@@ -653,9 +683,15 @@ const bulkDownloadQuotations = async (req, res) => {
     }
 
     // Find quotations with user permission check
-    const quotations = await Quotation.find(filter, 'quotationNumber _id').sort({ createdAt: -1 });
+    const quotations = await Quotation.find(filter, 'quotationNumber _id').sort(
+      { createdAt: -1 }
+    );
     if (quotations.length === 0) {
-      return ApiResponse.error(res, 'No quotations found or access denied', 404);
+      return ApiResponse.error(
+        res,
+        'No quotations found or access denied',
+        404
+      );
     }
 
     // Return quotation info for frontend to download individually
