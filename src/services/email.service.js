@@ -48,30 +48,51 @@ class EmailService {
   }
 
   /**
-   * Base email template with company branding
+   * Base email template with modern company branding matching logo colors
    */
   getBaseTemplate(content, includeFooter = true) {
     const footer = includeFooter
       ? `
-      <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #e0e0e0;">
-        <p style="color: #666; font-size: 12px; margin: 5px 0;">
-          ${this.companyInfo.name}<br>
-          ${this.companyInfo.address}<br>
-          Phone: ${this.companyInfo.phone} / ${this.companyInfo.phoneSecondary}<br>
-          Email: ${this.companyInfo.supportEmail}<br>
-          Website: <a href="${this.companyInfo.website}" style="color: #007bff;">${this.companyInfo.website}</a>
-        </p>
-        <p style="color: #999; font-size: 11px; margin-top: 15px;">
-          © ${new Date().getFullYear()} ${this.companyInfo.name}. All rights reserved.
-        </p>
+      <div style="margin-top: 50px; padding: 30px; background: linear-gradient(135deg, #1e293b 0%, #334155 100%); border-radius: 12px;">
+        <div style="text-align: center; margin-bottom: 25px;">
+          <h3 style="color: #f1f5f9; margin: 0 0 15px 0; font-size: 18px; font-weight: 600;">
+            ${this.companyInfo.name}
+          </h3>
+          <div style="width: 60px; height: 3px; background: linear-gradient(90deg, #2e8a56, #0000ff); margin: 0 auto; border-radius: 2px;"></div>
+        </div>
+
+        <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; margin-bottom: 25px;">
+          <div style="background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px; text-align: center; min-width: 140px;">
+            <div style="color: #2e8a56; font-size: 18px; margin-bottom: 5px;">📞</div>
+            <p style="color: #cbd5e1; font-size: 12px; margin: 0; font-weight: 500;">${this.companyInfo.phone}</p>
+            <p style="color: #cbd5e1; font-size: 12px; margin: 0; font-weight: 500;">${this.companyInfo.phoneSecondary}</p>
+          </div>
+
+          <div style="background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px; text-align: center; min-width: 140px;">
+            <div style="color: #0000ff; font-size: 18px; margin-bottom: 5px;">✉️</div>
+            <p style="color: #cbd5e1; font-size: 12px; margin: 0; font-weight: 500;">${this.companyInfo.supportEmail}</p>
+          </div>
+
+          <div style="background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px; text-align: center; min-width: 140px;">
+            <div style="color: #2e8a56; font-size: 18px; margin-bottom: 5px;">🌐</div>
+            <a href="${this.companyInfo.website}" style="color: #cbd5e1; font-size: 12px; text-decoration: none; font-weight: 500;">${this.companyInfo.website}</a>
+          </div>
+        </div>
+
+        <div style="text-align: center; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1);">
+          <p style="color: #64748b; font-size: 12px; margin: 0; line-height: 1.6;">
+            ${this.companyInfo.address}
+          </p>
+          <p style="color: #475569; font-size: 11px; margin: 10px 0 0 0;">
+            © ${new Date().getFullYear()} ${this.companyInfo.name}. All rights reserved.
+          </p>
+        </div>
       </div>
     `
       : '';
 
-    // Company logo URL from Cloudinary
-    const logoUrl =
-      process.env.COMPANY_LOGO_URL ||
-      'https://res.cloudinary.com/dvedpgxcz/image/upload/c_fit,h_60,q_auto,w_200/v1/aces-movers/company/logos/logo_1757535348534.webp';
+    // Company logo - using local SVG path instead of Cloudinary
+    const logoUrl = process.env.COMPANY_LOGO_URL || '/img/Aces_logo.svg';
 
     return `
       <!DOCTYPE html>
@@ -80,27 +101,65 @@ class EmailService {
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Email from ${this.companyInfo.name}</title>
+        <style>
+          @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+          @media only screen and (max-width: 600px) {
+            .email-container {
+              width: 100% !important;
+              margin: 0 !important;
+              border-radius: 0 !important;
+            }
+            .email-header {
+              padding: 25px 20px !important;
+              border-radius: 0 !important;
+            }
+            .email-content {
+              padding: 25px 20px !important;
+            }
+            .email-footer {
+              padding: 25px 20px !important;
+              margin-top: 30px !important;
+            }
+            .footer-cards {
+              flex-direction: column !important;
+              gap: 15px !important;
+            }
+            .footer-card {
+              min-width: auto !important;
+              width: 100% !important;
+            }
+          }
+        </style>
       </head>
-      <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f4f4;">
-        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; box-shadow: 0 0 10px rgba(0,0,0,0.1);">
+      <body style="margin: 0; padding: 20px; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%); line-height: 1.6;">
+        <div class="email-container" style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);">
           <!-- Header -->
-          <div style="background: linear-gradient(135deg, #007bff 0%, #0056b3 100%); padding: 30px; text-align: center;">
-            <img src="${logoUrl}" alt="${this.companyInfo.name} Logo" style="max-height: 60px; margin-bottom: 15px; display: block; margin-left: auto; margin-right: auto;" />
-            <h1 style="color: white; margin: 0; font-size: 28px; font-weight: 600;">
-              ${this.companyInfo.name}
-            </h1>
-            <p style="color: rgba(255,255,255,0.9); margin: 5px 0 0 0; font-size: 14px;">
-              Professional Moving Services
-            </p>
+          <div class="email-header" style="background: linear-gradient(135deg, #f8fafc 0%, #ffffff 100%); padding: 40px 30px; text-align: center; position: relative; overflow: hidden; border-bottom: 3px solid #2e8a56;">
+            <!-- Subtle decorative background -->
+            <div style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background-image: radial-gradient(circle at 20% 20%, rgba(46, 138, 86, 0.03) 0%, transparent 50%), radial-gradient(circle at 80% 80%, rgba(0, 0, 255, 0.02) 0%, transparent 50%); background-size: 100px 100px;"></div>
+
+            <div style="position: relative; z-index: 1;">
+              <img src="${logoUrl}" alt="${this.companyInfo.name} Logo" style="max-height: 80px; margin-bottom: 20px; display: block; margin-left: auto; margin-right: auto;" />
+              <div style="width: 80px; height: 3px; background: linear-gradient(90deg, #2e8a56, #0000ff); margin: 15px auto; border-radius: 2px;"></div>
+              <p style="color: #64748b; margin: 0; font-size: 16px; font-weight: 500; letter-spacing: 0.025em;">
+                Professional Moving & Relocation Services
+              </p>
+            </div>
           </div>
-          
+
           <!-- Content -->
-          <div style="padding: 30px;">
+          <div class="email-content" style="padding: 40px 30px; background-color: #ffffff;">
             ${content}
           </div>
-          
+
           <!-- Footer -->
           ${footer}
+        </div>
+
+        <!-- Email client compatibility -->
+        <div style="display: none; max-height: 0; overflow: hidden;">
+          &nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;
         </div>
       </body>
       </html>
@@ -126,8 +185,8 @@ class EmailService {
         You can now log in and start generating quotations and receipts for our clients.
       </p>
       
-      <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin: 25px 0;">
-        <h3 style="color: #333; margin-top: 0;">Your Login Credentials:</h3>
+      <div style="background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%); padding: 25px; border-radius: 12px; margin: 25px 0; border-left: 4px solid #2e8a56;">
+        <h3 style="color: #1e293b; margin-top: 0; font-weight: 600;">Your Login Credentials:</h3>
         <p style="margin: 10px 0;"><strong>Email:</strong> ${user.email}</p>
         <p style="margin: 10px 0;"><strong>Password:</strong> <code style="background: #fff; padding: 2px 6px; border-radius: 3px;">${password}</code></p>
         ${
@@ -145,15 +204,17 @@ class EmailService {
       </div>
       
       <div style="text-align: center; margin: 30px 0;">
-        <a href="${loginUrl}" 
-           style="background: linear-gradient(135deg, #28a745 0%, #218838 100%);
-                  color: white; 
-                  padding: 12px 30px; 
-                  text-decoration: none; 
-                  border-radius: 5px; 
+        <a href="${loginUrl}"
+           style="background: linear-gradient(135deg, #2e8a56 0%, #22c55e 100%);
+                  color: white;
+                  padding: 15px 35px;
+                  text-decoration: none;
+                  border-radius: 8px;
                   display: inline-block;
                   font-weight: 600;
-                  box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                  font-size: 16px;
+                  box-shadow: 0 4px 6px rgba(46, 138, 86, 0.2);
+                  transition: all 0.3s ease;">
           Login to Your Account
         </a>
       </div>
@@ -218,15 +279,17 @@ class EmailService {
       </p>
       
       <div style="text-align: center; margin: 30px 0;">
-        <a href="${resetUrl}" 
-           style="background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
-                  color: white; 
-                  padding: 12px 30px; 
-                  text-decoration: none; 
-                  border-radius: 5px; 
+        <a href="${resetUrl}"
+           style="background: linear-gradient(135deg, #dc3545 0%, #ef4444 100%);
+                  color: white;
+                  padding: 15px 35px;
+                  text-decoration: none;
+                  border-radius: 8px;
                   display: inline-block;
                   font-weight: 600;
-                  box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                  font-size: 16px;
+                  box-shadow: 0 4px 6px rgba(220, 53, 69, 0.2);
+                  transition: all 0.3s ease;">
           Reset Password
         </a>
       </div>
@@ -359,15 +422,17 @@ class EmailService {
       </div>
       
       <div style="text-align: center; margin: 30px 0;">
-        <a href="${viewUrl}" 
-           style="background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
-                  color: white; 
-                  padding: 12px 30px; 
-                  text-decoration: none; 
-                  border-radius: 5px; 
+        <a href="${viewUrl}"
+           style="background: linear-gradient(135deg, #0000ff 0%, #2563eb 100%);
+                  color: white;
+                  padding: 15px 35px;
+                  text-decoration: none;
+                  border-radius: 8px;
                   display: inline-block;
                   font-weight: 600;
-                  box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                  font-size: 16px;
+                  box-shadow: 0 4px 6px rgba(0, 0, 255, 0.2);
+                  transition: all 0.3s ease;">
           View Quotation
         </a>
       </div>
@@ -475,15 +540,17 @@ class EmailService {
       </div>
       
       <div style="text-align: center; margin: 30px 0;">
-        <a href="${viewUrl}" 
-           style="background: linear-gradient(135deg, #28a745 0%, #218838 100%);
-                  color: white; 
-                  padding: 12px 30px; 
-                  text-decoration: none; 
-                  border-radius: 5px; 
+        <a href="${viewUrl}"
+           style="background: linear-gradient(135deg, #2e8a56 0%, #22c55e 100%);
+                  color: white;
+                  padding: 15px 35px;
+                  text-decoration: none;
+                  border-radius: 8px;
                   display: inline-block;
                   font-weight: 600;
-                  box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                  font-size: 16px;
+                  box-shadow: 0 4px 6px rgba(46, 138, 86, 0.2);
+                  transition: all 0.3s ease;">
           View Receipt
         </a>
       </div>
@@ -578,15 +645,17 @@ class EmailService {
       </div>
       
       <div style="text-align: center; margin: 30px 0;">
-        <a href="${paymentUrl}" 
-           style="background: linear-gradient(135deg, #28a745 0%, #218838 100%);
-                  color: white; 
-                  padding: 12px 30px; 
-                  text-decoration: none; 
-                  border-radius: 5px; 
+        <a href="${paymentUrl}"
+           style="background: linear-gradient(135deg, #2e8a56 0%, #22c55e 100%);
+                  color: white;
+                  padding: 15px 35px;
+                  text-decoration: none;
+                  border-radius: 8px;
                   display: inline-block;
                   font-weight: 600;
-                  box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                  font-size: 16px;
+                  box-shadow: 0 4px 6px rgba(46, 138, 86, 0.2);
+                  transition: all 0.3s ease;">
           Make Payment
         </a>
       </div>
@@ -668,15 +737,17 @@ class EmailService {
       </div>
       
       <div style="text-align: center; margin: 30px 0;">
-        <a href="${shareLink}" 
-           style="background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
-                  color: white; 
-                  padding: 12px 30px; 
-                  text-decoration: none; 
-                  border-radius: 5px; 
+        <a href="${shareLink}"
+           style="background: linear-gradient(135deg, #0000ff 0%, #2563eb 100%);
+                  color: white;
+                  padding: 15px 35px;
+                  text-decoration: none;
+                  border-radius: 8px;
                   display: inline-block;
                   font-weight: 600;
-                  box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                  font-size: 16px;
+                  box-shadow: 0 4px 6px rgba(0, 0, 255, 0.2);
+                  transition: all 0.3s ease;">
           View Document
         </a>
       </div>

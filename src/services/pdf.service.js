@@ -490,13 +490,16 @@ class PDFService {
             : ''
         }
 
+        ${
+          receipt.receiptType === 'box'
+            ? `
         <div class="services-section">
-          <h3>${isCommitmentReceipt ? 'Commitment' : 'Services Provided'}</h3>
+          <h3>Services Provided</h3>
           <table class="services-table">
             <thead>
               <tr>
                 <th>Description</th>
-                ${isCommitmentReceipt ? '' : '<th>Qty</th>'}
+                <th>Qty</th>
                 <th>Amount</th>
                 <th>Total</th>
               </tr>
@@ -505,34 +508,67 @@ class PDFService {
               ${servicesRows}
             </tbody>
           </table>
-        </div>
+        </div>`
+            : ''
+        }
 
+        ${
+          receipt.receiptType !== 'box'
+            ? `
         <div class="payment-section">
           <div class="payment-summary">
             <h3>Payment Summary</h3>
-            <table class="pricing-table">
-              <tr>
-                <td><strong>Total Amount:</strong></td>
-                <td class="text-right">${this.formatCurrency(receipt.payment.totalAmount, receipt.payment.currency)}</td>
-              </tr>
-              <tr>
-                <td><strong>Amount Paid:</strong></td>
-                <td class="text-right">${this.formatCurrency(receipt.payment.amountPaid, receipt.payment.currency)}</td>
-              </tr>
-              <tr class="balance-row">
-                <td><strong>Balance Due:</strong></td>
-                <td class="text-right"><strong>${this.formatCurrency(receipt.payment.balance, receipt.payment.currency)}</strong></td>
-              </tr>
-              <tr>
-                <td><strong>Status:</strong></td>
-                <td class="text-right"><span class="status-badge status-${receipt.payment.status}">${receipt.payment.status.toUpperCase()}</span></td>
-              </tr>
+            <table class="services-table">
+              <thead>
+                <tr>
+                  <th>Description</th>
+                  <th>Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${receipt.receiptType === 'commitment'
+                  ? `
+                <tr>
+                  <td><strong>Commitment Fee Paid</strong></td>
+                  <td class="text-right">${this.formatCurrency(receipt.commitmentFeePaid || 0, receipt.payment.currency)}</td>
+                </tr>
+                <tr>
+                  <td><strong>Total Amount For Moving</strong></td>
+                  <td class="text-right">${this.formatCurrency(receipt.totalMovingAmount || 0, receipt.payment.currency)}</td>
+                </tr>
+                <tr class="balance-row">
+                  <td><strong>Balance Due</strong></td>
+                  <td class="text-right"><strong>${this.formatCurrency((receipt.totalMovingAmount || 0) - (receipt.commitmentFeePaid || 0), receipt.payment.currency)}</strong></td>
+                </tr>`
+                  : receipt.receiptType === 'final'
+                  ? `
+                <tr>
+                  <td><strong>Commitment Fee Paid (Previously)</strong></td>
+                  <td class="text-right">${this.formatCurrency(receipt.commitmentFeePaid || 0, receipt.payment.currency)}</td>
+                </tr>
+                <tr>
+                  <td><strong>Final Payment Received</strong></td>
+                  <td class="text-right">${this.formatCurrency(receipt.finalPaymentReceived || 0, receipt.payment.currency)}</td>
+                </tr>
+                <tr class="balance-row">
+                  <td><strong>Grand Total</strong></td>
+                  <td class="text-right"><strong>${this.formatCurrency((receipt.commitmentFeePaid || 0) + (receipt.finalPaymentReceived || 0), receipt.payment.currency)}</strong></td>
+                </tr>`
+                  : receipt.receiptType === 'one_time'
+                  ? `
+                <tr class="balance-row">
+                  <td><strong>Total Amount For Moving</strong></td>
+                  <td class="text-right"><strong>${this.formatCurrency(receipt.totalMovingAmount || 0, receipt.payment.currency)}</strong></td>
+                </tr>`
+                  : ''
+                }
+              </tbody>
             </table>
           </div>
-
-          ${
-            receipt.payment.paymentHistory?.length > 0
-              ? `
+        </div>`
+            : receipt.payment.paymentHistory?.length > 0
+            ? `
+        <div class="payment-section">
           <div class="payment-history">
             <h3>Payment History</h3>
             <table class="services-table">
@@ -548,10 +584,10 @@ class PDFService {
                 ${paymentHistoryRows}
               </tbody>
             </table>
-          </div>`
-              : ''
-          }
-        </div>
+          </div>
+        </div>`
+            : ''
+        }
 
         ${
           receipt.commitmentFee?.amount
@@ -586,16 +622,6 @@ class PDFService {
             <p><strong>Date:</strong> ${createdDate}</p>
           </div>
         </div>
-
-        ${
-          receipt.notes
-            ? `
-        <div class="notes-section">
-          <h3>Notes</h3>
-          <p>${receipt.notes}</p>
-        </div>`
-            : ''
-        }
 
         <div class="footer">
           <p><em>Thank you for choosing ${this.companyInfo.name}.</em></p>

@@ -146,39 +146,35 @@ const createReceipt = async (req, res) => {
 
     let services;
     let totalAmount;
+    let amountPaid = 0;
 
-    // Special handling for commitment receipts - only 3 service items
+    // Special handling based on receipt type
     if (req.body.receiptType === 'commitment') {
-      // Extract the commitment fee, total moving amount, and calculate balance
+      // COMMITMENT RECEIPT: No services array, just store the values
       const commitmentFeePaid = req.body.commitmentFeePaid || 0;
       const totalMovingAmount = req.body.totalMovingAmount || 0;
-      const balanceDue = totalMovingAmount - commitmentFeePaid;
 
-      services = [
-        {
-          description: 'Commitment Fee Paid',
-          quantity: 1,
-          amount: commitmentFeePaid,
-          total: commitmentFeePaid
-        },
-        {
-          description: 'Total Amount For Moving',
-          quantity: 1,
-          amount: totalMovingAmount,
-          total: totalMovingAmount
-        },
-        {
-          description: 'Balance Due',
-          quantity: 1,
-          amount: balanceDue,
-          total: balanceDue
-        }
-      ];
+      services = []; // No services for commitment receipts
+      totalAmount = totalMovingAmount;
+      amountPaid = commitmentFeePaid;
+    } else if (req.body.receiptType === 'final') {
+      // FINAL RECEIPT: No services array
+      const commitmentFeePaid = req.body.commitmentFeePaid || 0;
+      const finalPaymentReceived = req.body.finalPaymentReceived || 0;
+      const grandTotal = commitmentFeePaid + finalPaymentReceived;
 
-      // For commitment receipts, the total amount paid is the commitment fee
-      totalAmount = commitmentFeePaid;
-    } else {
-      // Calculate service totals for other receipt types
+      services = []; // No services for final receipts
+      totalAmount = grandTotal;
+      amountPaid = grandTotal; // Final receipt means fully paid
+    } else if (req.body.receiptType === 'one_time') {
+      // ONE TIME PAYMENT RECEIPT: No services array
+      const totalMovingAmount = req.body.totalMovingAmount || 0;
+
+      services = []; // No services for one-time receipts
+      totalAmount = totalMovingAmount;
+      amountPaid = totalMovingAmount; // One-time payment means fully paid
+    } else if (req.body.receiptType === 'box') {
+      // BOX RECEIPT: Has services but no location details
       services = req.body.services.map(service => ({
         ...service,
         quantity: service.quantity || 1,
@@ -187,6 +183,18 @@ const createReceipt = async (req, res) => {
 
       // Calculate total amount from services
       totalAmount = services.reduce((sum, service) => sum + service.total, 0);
+      amountPaid = req.body.payment?.amountPaid || 0;
+    } else {
+      // Default handling for any other types
+      services = req.body.services.map(service => ({
+        ...service,
+        quantity: service.quantity || 1,
+        total: (service.quantity || 1) * service.amount
+      }));
+
+      // Calculate total amount from services
+      totalAmount = services.reduce((sum, service) => sum + service.total, 0);
+      amountPaid = req.body.payment?.amountPaid || 0;
     }
 
     // Create receipt data
@@ -196,19 +204,14 @@ const createReceipt = async (req, res) => {
       services,
       payment: {
         ...req.body.payment,
-        totalAmount:
-          req.body.receiptType === 'commitment'
-            ? req.body.totalMovingAmount
-            : totalAmount,
-        amountPaid:
-          req.body.receiptType === 'commitment'
-            ? req.body.commitmentFeePaid || 0
-            : 0,
-        balance:
-          req.body.receiptType === 'commitment'
-            ? req.body.totalMovingAmount - req.body.commitmentFeePaid
-            : totalAmount
+        totalAmount: totalAmount,
+        amountPaid: amountPaid,
+        balance: totalAmount - amountPaid
       },
+      // Store the specific amounts for each receipt type
+      commitmentFeePaid: req.body.commitmentFeePaid,
+      totalMovingAmount: req.body.totalMovingAmount,
+      finalPaymentReceived: req.body.finalPaymentReceived,
       createdBy: req.user._id
     };
 
@@ -252,154 +255,6 @@ const createReceipt = async (req, res) => {
 };
 
 /**
- * Create receipt from quotation
- */
-const createFromQuotation = async (req, res) => {
-  try {
-    const { quotationId } = req.params;
-    const { receiptType, payment, signatures } = req.body;
-
-    if (
-      !receiptType ||
-      !['commitment', 'final', 'one_time'].includes(receiptType)
-    ) {
-      return ApiResponse.error(
-        res,
-        'Valid receipt type (commitment, final, one_time) is required',
-        400
-      );
-    }
-
-    const quotation = await Quotation.findById(quotationId);
-    if (!quotation) {
-      return ApiResponse.error(res, 'Quotation not found', 404);
-    }
-
-    // Check permissions
-    if (
-      req.user.role !== 'admin' &&
-      quotation.createdBy.toString() !== req.user._id.toString()
-    ) {
-      return ApiResponse.error(res, 'Access denied', 403);
-    }
-
-    if (quotation.validity.status === 'expired') {
-      return ApiResponse.error(
-        res,
-        'Cannot create receipt from expired quotation',
-        400
-      );
-    }
-
-    if (quotation.validity.status === 'converted') {
-      return ApiResponse.error(
-        res,
-        'Quotation already converted to receipt',
-        400
-      );
-    }
-
-    // Generate receipt number
-    const receiptNumber = await Receipt.generateReceiptNumber(receiptType);
-
-    let services;
-
-    // Special handling for commitment receipts
-    if (receiptType === 'commitment') {
-      const commitmentFeePaid = payment?.commitmentFeePaid || 0;
-      const totalMovingAmount = quotation.pricing.totalAmount;
-      const balanceDue = totalMovingAmount - commitmentFeePaid;
-
-      services = [
-        {
-          description: 'Commitment Fee Paid',
-          quantity: 1,
-          amount: commitmentFeePaid,
-          total: commitmentFeePaid
-        },
-        {
-          description: 'Total Amount For Moving',
-          quantity: 1,
-          amount: totalMovingAmount,
-          total: totalMovingAmount
-        },
-        {
-          description: 'Balance Due',
-          quantity: 1,
-          amount: balanceDue,
-          total: balanceDue
-        }
-      ];
-    } else {
-      // Convert quotation services to receipt services for other types
-      services = quotation.services.map(service => ({
-        description: `${service.name} - ${service.description}`,
-        amount: service.unitPrice,
-        quantity: service.quantity,
-        total: service.total
-      }));
-    }
-
-    // Create receipt data from quotation
-    const receiptData = {
-      receiptNumber,
-      receiptType,
-      quotationId: quotation._id,
-      client: {
-        name: quotation.client.name,
-        phone: quotation.client.phone,
-        email: quotation.client.email,
-        address: req.body.client?.address || ''
-      },
-      locations: quotation.locations,
-      services,
-      payment: {
-        totalAmount: quotation.pricing.totalAmount,
-        amountPaid:
-          receiptType === 'commitment' ? payment?.commitmentFeePaid || 0 : 0,
-        balance:
-          receiptType === 'commitment'
-            ? quotation.pricing.totalAmount - (payment?.commitmentFeePaid || 0)
-            : quotation.pricing.totalAmount,
-        currency: quotation.pricing.currency,
-        status: 'pending',
-        ...payment
-      },
-      signatures: signatures || {},
-      createdBy: req.user._id,
-      _editedBy: req.user._id
-    };
-
-    const receipt = new Receipt(receiptData);
-    await receipt.save();
-
-    // Mark quotation as converted
-    await quotation.convertToReceipt(receipt._id, req.user._id);
-
-    // Populate created receipt
-    await receipt.populate([
-      { path: 'createdBy', select: 'fullName email' },
-      { path: 'quotationId', select: 'quotationNumber type' }
-    ]);
-
-    ApiResponse.success(
-      res,
-      { receipt },
-      'Receipt created from quotation successfully',
-      201
-    );
-  } catch (error) {
-    console.error('Create from quotation error:', error);
-
-    if (error.name === 'ValidationError') {
-      return ApiResponse.validationError(res, Object.values(error.errors));
-    }
-
-    ApiResponse.error(res, 'Failed to create receipt from quotation', 500);
-  }
-};
-
-/**
  * Update receipt
  */
 const updateReceipt = async (req, res) => {
@@ -424,55 +279,58 @@ const updateReceipt = async (req, res) => {
       return ApiResponse.error(res, 'Access denied', 403);
     }
 
-    // Handle commitment receipts specially
-    if (
-      receipt.receiptType === 'commitment' &&
-      (req.body.commitmentFeePaid !== undefined ||
-        req.body.totalMovingAmount !== undefined)
-    ) {
-      // Extract the commitment fee and total moving amount
-      const commitmentFeePaid =
-        req.body.commitmentFeePaid !== undefined
+    // Handle different receipt types
+    if (receipt.receiptType === 'commitment') {
+      // COMMITMENT RECEIPT: No services
+      const commitmentFeePaid = req.body.commitmentFeePaid !== undefined
           ? req.body.commitmentFeePaid
-          : receipt.services.find(s => s.description === 'Commitment Fee Paid')
-              ?.amount || 0;
+          : receipt.commitmentFeePaid || 0;
 
-      const totalMovingAmount =
-        req.body.totalMovingAmount !== undefined
+      const totalMovingAmount = req.body.totalMovingAmount !== undefined
           ? req.body.totalMovingAmount
-          : receipt.services.find(
-              s => s.description === 'Total Amount For Moving'
-            )?.amount || 0;
+          : receipt.totalMovingAmount || 0;
 
-      const balanceDue = totalMovingAmount - commitmentFeePaid;
+      req.body.services = []; // No services for commitment receipts
+      req.body.commitmentFeePaid = commitmentFeePaid;
+      req.body.totalMovingAmount = totalMovingAmount;
 
-      // Generate the 3 service items for commitment receipt
-      req.body.services = [
-        {
-          description: 'Commitment Fee Paid',
-          quantity: 1,
-          amount: commitmentFeePaid,
-          total: commitmentFeePaid
-        },
-        {
-          description: 'Total Amount For Moving',
-          quantity: 1,
-          amount: totalMovingAmount,
-          total: totalMovingAmount
-        },
-        {
-          description: 'Balance Due',
-          quantity: 1,
-          amount: balanceDue,
-          total: balanceDue
-        }
-      ];
-
-      // Update payment info
       if (!req.body.payment) req.body.payment = {};
       req.body.payment.totalAmount = totalMovingAmount;
       req.body.payment.amountPaid = commitmentFeePaid;
-      req.body.payment.balance = balanceDue;
+      req.body.payment.balance = totalMovingAmount - commitmentFeePaid;
+    } else if (receipt.receiptType === 'final') {
+      // FINAL RECEIPT: No services
+      const commitmentFeePaid = req.body.commitmentFeePaid !== undefined
+          ? req.body.commitmentFeePaid
+          : receipt.commitmentFeePaid || 0;
+
+      const finalPaymentReceived = req.body.finalPaymentReceived !== undefined
+          ? req.body.finalPaymentReceived
+          : receipt.finalPaymentReceived || 0;
+
+      const grandTotal = commitmentFeePaid + finalPaymentReceived;
+
+      req.body.services = []; // No services for final receipts
+      req.body.commitmentFeePaid = commitmentFeePaid;
+      req.body.finalPaymentReceived = finalPaymentReceived;
+
+      if (!req.body.payment) req.body.payment = {};
+      req.body.payment.totalAmount = grandTotal;
+      req.body.payment.amountPaid = grandTotal;
+      req.body.payment.balance = 0;
+    } else if (receipt.receiptType === 'one_time') {
+      // ONE TIME PAYMENT RECEIPT: No services
+      const totalMovingAmount = req.body.totalMovingAmount !== undefined
+          ? req.body.totalMovingAmount
+          : receipt.totalMovingAmount || 0;
+
+      req.body.services = []; // No services for one-time receipts
+      req.body.totalMovingAmount = totalMovingAmount;
+
+      if (!req.body.payment) req.body.payment = {};
+      req.body.payment.totalAmount = totalMovingAmount;
+      req.body.payment.amountPaid = totalMovingAmount;
+      req.body.payment.balance = 0;
     } else if (req.body.services) {
       // Calculate service totals for other receipt types
       req.body.services = req.body.services.map(service => ({
@@ -1012,7 +870,6 @@ module.exports = {
   getReceipts,
   getReceiptById,
   createReceipt,
-  createFromQuotation,
   updateReceipt,
   deleteReceipt,
   addPayment,

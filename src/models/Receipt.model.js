@@ -208,6 +208,19 @@ const receiptSchema = new mongoose.Schema(
         default: Date.now
       }
     },
+    // For storing specific amounts based on receipt type
+    commitmentFeePaid: {
+      type: Number,
+      min: [0, 'Commitment fee cannot be negative']
+    },
+    totalMovingAmount: {
+      type: Number,
+      min: [0, 'Total moving amount cannot be negative']
+    },
+    finalPaymentReceived: {
+      type: Number,
+      min: [0, 'Final payment cannot be negative']
+    },
     // For final receipts - reference to commitment receipt
     commitmentFee: {
       commitmentReceiptId: {

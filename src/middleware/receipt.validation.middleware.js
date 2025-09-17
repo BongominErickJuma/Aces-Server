@@ -11,14 +11,15 @@ const receiptValidation = [
 
   // Custom validation for services based on receipt type
   body('services').custom((value, { req }) => {
-    if (req.body.receiptType === 'commitment') {
-      // For commitment receipts, services are generated automatically
+    // For commitment, final, and one_time receipts, services are generated automatically
+    if (['commitment', 'final', 'one_time'].includes(req.body.receiptType)) {
       return true;
-    } else {
-      // For other receipt types, services are required
+    }
+    // For box receipts, services are required
+    if (req.body.receiptType === 'box') {
       if (!value || !Array.isArray(value) || value.length === 0) {
         throw new Error(
-          'At least one service is required for this receipt type'
+          'At least one service is required for box receipts'
         );
       }
     }
@@ -49,13 +50,27 @@ const receiptValidation = [
     .optional()
     .trim()
     .isLength({ max: 300 })
-    .withMessage('Pickup location cannot exceed 300 characters'),
+    .withMessage('Pickup location cannot exceed 300 characters')
+    .custom((value, { req }) => {
+      // Locations are required for commitment, final, and one_time receipts
+      if (['commitment', 'final', 'one_time'].includes(req.body.receiptType) && !value) {
+        throw new Error('Pickup location is required for this receipt type');
+      }
+      return true;
+    }),
 
   body('locations.to')
     .optional()
     .trim()
     .isLength({ max: 300 })
-    .withMessage('Destination location cannot exceed 300 characters'),
+    .withMessage('Destination location cannot exceed 300 characters')
+    .custom((value, { req }) => {
+      // Locations are required for commitment, final, and one_time receipts
+      if (['commitment', 'final', 'one_time'].includes(req.body.receiptType) && !value) {
+        throw new Error('Destination location is required for this receipt type');
+      }
+      return true;
+    }),
 
   body('locations.movingDate').optional().isISO8601().toDate(),
 
@@ -118,14 +133,15 @@ const receiptValidation = [
     .isLength({ max: 1000 })
     .withMessage('Notes cannot exceed 1000 characters'),
 
-  // Commitment receipt specific fields
+  // Receipt type specific fields
   body('commitmentFeePaid')
     .optional()
     .isFloat({ min: 0 })
     .withMessage('Commitment fee must be positive')
     .custom((value, { req }) => {
-      if (req.body.receiptType === 'commitment' && !value && value !== 0) {
-        throw new Error('Commitment fee is required for commitment receipts');
+      if ((req.body.receiptType === 'commitment' || req.body.receiptType === 'final') &&
+          value === undefined) {
+        throw new Error('Commitment fee is required for this receipt type');
       }
       return true;
     }),
@@ -135,28 +151,23 @@ const receiptValidation = [
     .isFloat({ min: 0 })
     .withMessage('Total moving amount must be positive')
     .custom((value, { req }) => {
-      if (req.body.receiptType === 'commitment' && !value && value !== 0) {
-        throw new Error(
-          'Total moving amount is required for commitment receipts'
-        );
+      if (['commitment', 'one_time'].includes(req.body.receiptType) &&
+          value === undefined) {
+        throw new Error('Total moving amount is required for this receipt type');
+      }
+      return true;
+    }),
+
+  body('finalPaymentReceived')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('Final payment must be positive')
+    .custom((value, { req }) => {
+      if (req.body.receiptType === 'final' && value === undefined) {
+        throw new Error('Final payment received is required for final receipts');
       }
       return true;
     })
-];
-
-const createFromQuotationValidation = [
-  body('receiptType')
-    .isIn(['commitment', 'final', 'one_time'])
-    .withMessage('Receipt type must be commitment, final, or one_time'),
-  body('payment.method')
-    .optional()
-    .isIn(['cash', 'bank_transfer', 'mobile_money'])
-    .withMessage('Payment method must be cash, bank_transfer, or mobile_money'),
-  body('client.address')
-    .optional()
-    .trim()
-    .isLength({ max: 500 })
-    .withMessage('Address cannot exceed 500 characters')
 ];
 
 const addPaymentValidation = [
@@ -191,7 +202,6 @@ const receiptEmailValidation = [
 
 module.exports = {
   receiptValidation,
-  createFromQuotationValidation,
   addPaymentValidation,
   receiptEmailValidation
 };

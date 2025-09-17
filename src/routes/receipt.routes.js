@@ -10,7 +10,6 @@ const {
   getReceipts,
   getReceiptById,
   createReceipt,
-  createFromQuotation,
   updateReceipt,
   deleteReceipt,
   addPayment,
@@ -28,7 +27,6 @@ const {
 } = require('../middleware/validation.middleware');
 const {
   receiptValidation,
-  createFromQuotationValidation,
   addPaymentValidation,
   receiptEmailValidation
 } = require('../middleware/receipt.validation.middleware');
@@ -68,18 +66,6 @@ router.get('/:id', getReceiptById);
  * @access Private (Profile must be complete)
  */
 router.post('/', requireCompleteProfile, receiptValidation, createReceipt);
-
-/**
- * @route POST /api/receipts/from-quotation/:quotationId
- * @desc Create receipt from quotation
- * @access Private (Profile must be complete)
- */
-router.post(
-  '/from-quotation/:quotationId',
-  requireCompleteProfile,
-  createFromQuotationValidation,
-  createFromQuotation
-);
 
 /**
  * @route PUT /api/receipts/:id
