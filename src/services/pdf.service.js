@@ -3,7 +3,18 @@
  * Handles PDF generation for quotations and receipts using Puppeteer
  */
 
-const puppeteer = require('puppeteer');
+const chromium = require('@sparticuz/chromium');
+
+// Use different puppeteer imports based on environment
+let puppeteer;
+const isDev = process.env.NODE_ENV === 'development';
+const isWindows = process.platform === 'win32';
+
+if (isDev && isWindows) {
+  puppeteer = require('puppeteer'); // Full puppeteer for local development
+} else {
+  puppeteer = require('puppeteer-core'); // Core for production
+}
 const fs = require('fs').promises;
 const path = require('path');
 const cloudinary = require('../config/cloudinary.config');
@@ -44,10 +55,33 @@ class PDFService {
    */
   async getBrowser() {
     if (!this.browser) {
-      this.browser = await puppeteer.launch({
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
-        headless: true
-      });
+      const isDev = process.env.NODE_ENV === 'development';
+      const isWindows = process.platform === 'win32';
+
+      // Use different configurations for development vs production
+      if (isDev && isWindows) {
+        // For Windows development, use local Chrome if available
+        this.browser = await puppeteer.launch({
+          headless: true,
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--no-first-run',
+            '--disable-default-apps'
+          ]
+        });
+      } else {
+        // For production/deployment, use chromium
+        this.browser = await puppeteer.launch({
+          args: chromium.args,
+          defaultViewport: chromium.defaultViewport,
+          executablePath: await chromium.executablePath(),
+          headless: chromium.headless,
+          ignoreHTTPSErrors: true
+        });
+      }
     }
     return this.browser;
   }
@@ -526,8 +560,9 @@ class PDFService {
                 </tr>
               </thead>
               <tbody>
-                ${receipt.receiptType === 'commitment'
-                  ? `
+                ${
+                  receipt.receiptType === 'commitment'
+                    ? `
                 <tr>
                   <td><strong>Commitment Fee Paid</strong></td>
                   <td class="text-right">${this.formatCurrency(receipt.commitmentFeePaid || 0, receipt.payment.currency)}</td>
@@ -540,8 +575,8 @@ class PDFService {
                   <td><strong>Balance Due</strong></td>
                   <td class="text-right"><strong>${this.formatCurrency((receipt.totalMovingAmount || 0) - (receipt.commitmentFeePaid || 0), receipt.payment.currency)}</strong></td>
                 </tr>`
-                  : receipt.receiptType === 'final'
-                  ? `
+                    : receipt.receiptType === 'final'
+                      ? `
                 <tr>
                   <td><strong>Commitment Fee Paid (Previously)</strong></td>
                   <td class="text-right">${this.formatCurrency(receipt.commitmentFeePaid || 0, receipt.payment.currency)}</td>
@@ -554,20 +589,20 @@ class PDFService {
                   <td><strong>Grand Total</strong></td>
                   <td class="text-right"><strong>${this.formatCurrency((receipt.commitmentFeePaid || 0) + (receipt.finalPaymentReceived || 0), receipt.payment.currency)}</strong></td>
                 </tr>`
-                  : receipt.receiptType === 'one_time'
-                  ? `
+                      : receipt.receiptType === 'one_time'
+                        ? `
                 <tr class="balance-row">
                   <td><strong>Total Amount For Moving</strong></td>
                   <td class="text-right"><strong>${this.formatCurrency(receipt.totalMovingAmount || 0, receipt.payment.currency)}</strong></td>
                 </tr>`
-                  : ''
+                        : ''
                 }
               </tbody>
             </table>
           </div>
         </div>`
             : receipt.payment.paymentHistory?.length > 0
-            ? `
+              ? `
         <div class="payment-section">
           <div class="payment-history">
             <h3>Payment History</h3>
@@ -586,7 +621,7 @@ class PDFService {
             </table>
           </div>
         </div>`
-            : ''
+              : ''
         }
 
         ${

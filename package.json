@@ -37,6 +37,8 @@
     "mongoose-paginate-v2": "^1.9.1",
     "multer": "^2.0.2",
     "nodemailer": "^6.9.7",
+    "puppeteer-core": "^21.0.1",
+    "@sparticuz/chromium": "^118.0.0",
     "puppeteer": "^21.0.1"
   },
   "devDependencies": {
