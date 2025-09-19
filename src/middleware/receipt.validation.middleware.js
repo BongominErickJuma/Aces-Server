@@ -18,9 +18,7 @@ const receiptValidation = [
     // For box receipts, services are required
     if (req.body.receiptType === 'box') {
       if (!value || !Array.isArray(value) || value.length === 0) {
-        throw new Error(
-          'At least one service is required for box receipts'
-        );
+        throw new Error('At least one service is required for box receipts');
       }
     }
     return true;
@@ -36,7 +34,7 @@ const receiptValidation = [
     .withMessage('Please provide a valid phone number'),
 
   body('client.email')
-    .optional()
+    .optional({ nullable: true, checkFalsy: true })
     .isEmail()
     .withMessage('Please provide a valid email'),
 
@@ -53,7 +51,10 @@ const receiptValidation = [
     .withMessage('Pickup location cannot exceed 300 characters')
     .custom((value, { req }) => {
       // Locations are required for commitment, final, and one_time receipts
-      if (['commitment', 'final', 'one_time'].includes(req.body.receiptType) && !value) {
+      if (
+        ['commitment', 'final', 'one_time'].includes(req.body.receiptType) &&
+        !value
+      ) {
         throw new Error('Pickup location is required for this receipt type');
       }
       return true;
@@ -66,8 +67,13 @@ const receiptValidation = [
     .withMessage('Destination location cannot exceed 300 characters')
     .custom((value, { req }) => {
       // Locations are required for commitment, final, and one_time receipts
-      if (['commitment', 'final', 'one_time'].includes(req.body.receiptType) && !value) {
-        throw new Error('Destination location is required for this receipt type');
+      if (
+        ['commitment', 'final', 'one_time'].includes(req.body.receiptType) &&
+        !value
+      ) {
+        throw new Error(
+          'Destination location is required for this receipt type'
+        );
       }
       return true;
     }),
@@ -139,8 +145,11 @@ const receiptValidation = [
     .isFloat({ min: 0 })
     .withMessage('Commitment fee must be positive')
     .custom((value, { req }) => {
-      if ((req.body.receiptType === 'commitment' || req.body.receiptType === 'final') &&
-          value === undefined) {
+      if (
+        (req.body.receiptType === 'commitment' ||
+          req.body.receiptType === 'final') &&
+        value === undefined
+      ) {
         throw new Error('Commitment fee is required for this receipt type');
       }
       return true;
@@ -151,9 +160,13 @@ const receiptValidation = [
     .isFloat({ min: 0 })
     .withMessage('Total moving amount must be positive')
     .custom((value, { req }) => {
-      if (['commitment', 'one_time'].includes(req.body.receiptType) &&
-          value === undefined) {
-        throw new Error('Total moving amount is required for this receipt type');
+      if (
+        ['commitment', 'one_time'].includes(req.body.receiptType) &&
+        value === undefined
+      ) {
+        throw new Error(
+          'Total moving amount is required for this receipt type'
+        );
       }
       return true;
     }),
@@ -164,7 +177,9 @@ const receiptValidation = [
     .withMessage('Final payment must be positive')
     .custom((value, { req }) => {
       if (req.body.receiptType === 'final' && value === undefined) {
-        throw new Error('Final payment received is required for final receipts');
+        throw new Error(
+          'Final payment received is required for final receipts'
+        );
       }
       return true;
     })

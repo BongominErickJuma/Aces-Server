@@ -24,12 +24,35 @@ const getUserNotifications = asyncHandler(async (req, res) => {
 
   const userId = req.user._id;
 
-  // Build filter object
-  const filter = { userId };
+  // Build filter object - user can see notifications where they are the primary recipient or in recipientUserIds
+  const filter = {
+    $or: [{ userId }, { recipientUserIds: userId }],
+    lifecycleStatus: { $ne: 'archived' } // Don't show archived notifications to users
+  };
 
-  if (unreadOnly === 'true') {
-    filter.read = false;
+  // Handle unreadOnly filter (support both string and boolean)
+  const isUnreadOnly = unreadOnly === 'true' || unreadOnly === true;
+  const isReadOnly = unreadOnly === 'false' || unreadOnly === false;
+
+  if (isUnreadOnly) {
+    // Show only unread notifications for this user
+    filter.$and = [
+      {
+        $and: [
+          { recipientUserIds: userId },
+          { 'readByUsers.userId': { $ne: userId } }
+        ]
+      }
+    ];
+  } else if (isReadOnly) {
+    // Show only read notifications for this user
+    filter.$and = [
+      {
+        $and: [{ recipientUserIds: userId }, { 'readByUsers.userId': userId }]
+      }
+    ];
   }
+  // If unreadOnly is undefined/null, show all notifications
 
   if (type) {
     filter.type = type;
@@ -39,8 +62,8 @@ const getUserNotifications = asyncHandler(async (req, res) => {
     filter.priority = priority;
   }
 
-  // Add expiry filter
-  filter.$or = [{ expiresAt: { $gt: new Date() } }, { expiresAt: null }];
+  // Add expiry filter - only show active notifications
+  filter.expiresAt = { $gt: new Date() };
 
   const options = {
     page: parseInt(page),
@@ -53,6 +76,13 @@ const getUserNotifications = asyncHandler(async (req, res) => {
   };
 
   const notifications = await Notification.paginate(filter, options);
+
+  // Update the read status for each notification based on current user
+  notifications.docs = notifications.docs.map(notification => {
+    const notificationObj = notification.toObject();
+    notificationObj.read = notification.readByUsers.some(reader => reader.userId.equals(userId));
+    return notificationObj;
+  });
 
   ApiResponse.success(
     res,
@@ -83,15 +113,18 @@ const markAsRead = asyncHandler(async (req, res) => {
 
   const notification = await Notification.findOne({
     _id: id,
-    userId
+    $or: [{ userId }, { recipientUserIds: userId }]
   });
 
   if (!notification) {
     return ApiResponse.error(res, 'Notification not found', 404);
   }
 
-  if (!notification.read) {
-    await notification.markAsRead();
+  // Check if user has already read this notification
+  const hasUserRead = notification.readByUsers.some(reader => reader.userId.equals(userId));
+
+  if (!hasUserRead) {
+    await notification.markAsRead(userId);
   }
 
   ApiResponse.success(res, notification, 'Notification marked as read');
@@ -114,8 +147,11 @@ const markAsUnread = asyncHandler(async (req, res) => {
     return ApiResponse.error(res, 'Notification not found', 404);
   }
 
-  if (notification.read) {
-    await notification.markAsUnread();
+  // Check if user has read this notification
+  const hasUserRead = notification.readByUsers.some(reader => reader.userId.equals(userId));
+
+  if (hasUserRead) {
+    await notification.markAsUnread(userId);
   }
 
   ApiResponse.success(res, notification, 'Notification marked as unread');
@@ -177,7 +213,8 @@ const createNotification = asyncHandler(async (req, res) => {
     priority = 'normal',
     actionUrl,
     actionText,
-    metadata
+    metadata,
+    notificationGroup
   } = req.body;
 
   const actorId = req.user.id;
@@ -192,9 +229,13 @@ const createNotification = asyncHandler(async (req, res) => {
     return ApiResponse.error(res, 'Some recipient IDs are invalid', 400);
   }
 
-  // Create notifications for all recipients
-  const notifications = recipientIds.map(userId => ({
-    userId,
+  // Generate notification group if not provided
+  const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '_');
+  const groupId = notificationGroup || `${type}_admin_${dateStr}_${Date.now()}`;
+
+  // Create a single notification for all recipients
+  const notification = {
+    userId: recipientIds[0], // Primary recipient (for legacy compatibility)
     type,
     title,
     message,
@@ -202,18 +243,21 @@ const createNotification = asyncHandler(async (req, res) => {
     actionUrl,
     actionText,
     actorId,
-    metadata
-  }));
+    metadata,
+    notificationGroup: groupId,
+    recipientUserIds: recipientIds,
+    adminManaged: true
+  };
 
-  const createdNotifications = await Notification.insertMany(notifications);
+  const createdNotification = await Notification.create(notification);
 
   ApiResponse.success(
     res,
     {
-      count: createdNotifications.length,
-      notifications: createdNotifications
+      count: 1,
+      notification: createdNotification
     },
-    `${createdNotifications.length} notifications created successfully`
+    'Notification created successfully'
   );
 });
 

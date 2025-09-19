@@ -111,6 +111,36 @@ class PDFService {
   }
 
   /**
+   * Generate company logo for quotation HTML
+   */
+  async generateCompanyLogoForQuotation() {
+    // Try multiple possible paths for the logo
+    const possiblePaths = [
+      path.join(process.cwd(), 'backend', 'public', 'img', 'Aces_logo.svg'),
+      path.join(__dirname, '..', '..', 'public', 'img', 'Aces_logo.svg'),
+      path.join(process.cwd(), 'public', 'img', 'Aces_logo.svg')
+    ];
+
+    for (const logoPath of possiblePaths) {
+      try {
+        const logoBuffer = await fs.readFile(logoPath);
+        const logoBase64 = `data:image/svg+xml;base64,${logoBuffer.toString('base64')}`;
+        console.log(`Logo loaded successfully from: ${logoPath}`);
+        return `<div class="company-logo">
+          <img src="${logoBase64}" alt="AcesMovers Logo" class="logo-img" />
+        </div>`;
+      } catch (error) {
+        console.log(`Logo not found at: ${logoPath}`);
+      }
+    }
+
+    console.log(
+      'Logo file not found in any expected location, proceeding without logo'
+    );
+    return '<div class="company-logo"></div>';
+  }
+
+  /**
    * Generate company header HTML
    */
   async generateCompanyHeader() {
@@ -220,20 +250,20 @@ class PDFService {
    * Generate quotation HTML template
    */
   async generateQuotationHTML(quotation) {
-    const validUntil = this.formatDate(quotation.validity.validUntil);
-    const movingDate = this.formatDate(quotation.locations.movingDate);
+    const movingDate = quotation.locations?.movingDate
+      ? this.formatDate(quotation.locations.movingDate)
+      : '';
     const createdDate = this.formatDate(quotation.createdAt);
 
-    // Generate services table
+    // Generate services table rows matching the sample layout
     const servicesRows = quotation.services
       .map(
-        service => `
+        (service, index) => `
       <tr>
-        <td>${service.name}</td>
-        <td>${service.description}</td>
-        <td class="text-center">${service.quantity}</td>
-        <td class="text-right">${this.formatCurrency(service.unitPrice, quotation.pricing.currency)}</td>
-        <td class="text-right">${this.formatCurrency(service.total, quotation.pricing.currency)}</td>
+        <td class="service-number">${index + 1}</td>
+        <td class="service-name">${service.name}</td>
+        <td class="service-description">${service.description}</td>
+        <td class="service-amount">${this.formatCurrency(service.total, quotation.pricing.currency)}</td>
       </tr>
     `
       )
@@ -247,162 +277,117 @@ class PDFService {
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Quotation ${quotation.quotationNumber}</title>
         <style>
-          ${this.getCommonStyles()}
+          ${this.getQuotationStyles()}
         </style>
       </head>
       <body>
-        ${await this.generateCompanyHeader()}
-        
-        <div class="document-title">
-          <h2>QUOTATION</h2>
-          <p style="text-align: center; font-style: italic; margin-top: 5px; color: #666; font-size: 14px;">
-            <strong>This quotation is valid for ${quotation.validity.daysValid} days from the date of issue.</strong>
-          </p>
-        </div>
+        <div class="page-container">
+          <!-- Header Section -->
+          <div class="header-section">
+            <!-- Top Row: Logo/Company Name vs QUOTATION word -->
+            <div class="top-row">
+              <div class="logo-company-section">
+                ${await this.generateCompanyLogoForQuotation()}
+                <h2 class="company-name">Aces Movers and Relocation Company Limited</h2>
+              </div>
+              <div class="quotation-header">QUOTATION</div>
+            </div>
 
-        <div class="document-info">
-          <div class="info-section">
-            <h3>Quotation Details</h3>
-            <table class="info-table">
-              <tr><td><strong>Quotation No:</strong></td><td>${quotation.quotationNumber}</td></tr>
-              <tr><td><strong>Date:</strong></td><td>${createdDate}</td></tr>
-              <tr><td><strong>Type:</strong></td><td>${quotation.type.charAt(0).toUpperCase() + quotation.type.slice(1)} Move</td></tr>
-              <tr><td><strong>Valid Until:</strong></td><td>${validUntil}</td></tr>
+            <!-- Bottom Row: Contact Info vs Quotation Box -->
+            <div class="bottom-row">
+              <div class="contact-info">
+                <p class="company-address">Kigowa2 Kulambiro Kisasi Ring Road 83AD</p>
+                <p class="company-location">Kampala, Uganda.</p>
+                <p class="company-email">info@acesmovers.com</p>
+                <p class="company-phone">+256 778 259191</p>
+                <p class="company-phone">+256 725 711730</p>
+                <p class="company-website">acesmovers.com</p>
+              </div>
+
+              <div class="quotation-details-box">
+                <table class="quotation-info">
+                  <tr><td class="label">Quotation No:</td><td class="value">${quotation.quotationNumber}</td></tr>
+                  <tr><td class="label">Date:</td><td class="value">${createdDate}</td></tr>
+                  <tr><td class="label">Service Type:</td><td class="value">${quotation.type.charAt(0).toUpperCase() + quotation.type.slice(1)} Move</td></tr>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Client Info Section -->
+          <div class="client-section">
+            <h3 class="section-title">Client's Info</h3>
+            <div class="client-details">
+              <div class="client-column-1">
+                ${quotation.client.company ? `<div class="client-info-row"><span class="client-label">Company Name:</span><span class="client-value">${quotation.client.company}</span></div>` : ''}
+                <div class="client-info-row"><span class="client-label">Contact Person:</span><span class="client-value">${quotation.client.name}</span></div>
+                <div class="client-info-row"><span class="client-label">Contact:</span><span class="client-value">${quotation.client.phone}</span></div>
+                ${quotation.client.email ? `<div class="client-info-row"><span class="client-label">Email:</span><span class="client-value">${quotation.client.email}</span></div>` : ''}
+              </div>
+              <div class="client-column-2">
+                <div class="client-info-row"><span class="client-label">From:</span><span class="client-value">${quotation.locations.from}</span></div>
+                <div class="client-info-row"><span class="client-label">To:</span><span class="client-value">${quotation.locations.to}</span></div>
+                ${movingDate ? `<div class="client-info-row"><span class="client-label">Moving Date:</span><span class="client-value">${movingDate}</span></div>` : ''}
+              </div>
+            </div>
+          </div>
+
+          <!-- Services Section -->
+          <div class="services-section">
+            <table class="services-table">
+              <thead>
+                <tr class="services-header">
+                  <th class="col-number"></th>
+                  <th class="col-service">Services</th>
+                  <th class="col-description">Description</th>
+                  <th class="col-amount">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${servicesRows}
+              </tbody>
             </table>
-          </div>
 
-          <div class="info-section">
-            <h3>Client Information</h3>
-            <table class="info-table">
-              <tr><td><strong>Name:</strong></td><td>${quotation.client.name}</td></tr>
-              ${quotation.client.company ? `<tr><td><strong>Company:</strong></td><td>${quotation.client.company}</td></tr>` : ''}
-              <tr><td><strong>Phone:</strong></td><td>${quotation.client.phone}</td></tr>
-              ${quotation.client.email ? `<tr><td><strong>Email:</strong></td><td>${quotation.client.email}</td></tr>` : ''}
-            </table>
-          </div>
-        </div>
-
-        <div class="info-section">
-          <h3>Moving Details</h3>
-          <table class="info-table">
-            <tr><td><strong>From:</strong></td><td>${quotation.locations.from}</td></tr>
-            <tr><td><strong>To:</strong></td><td>${quotation.locations.to}</td></tr>
-            <tr><td><strong>Moving Date:</strong></td><td>${movingDate}</td></tr>
-          </table>
-        </div>
-
-        <div class="services-section">
-          <h3>Services</h3>
-          <table class="services-table">
-            <thead>
-              <tr>
-                <th>Service</th>
-                <th>Description</th>
-                <th>Qty</th>
-                <th>Unit Price</th>
-                <th>Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${servicesRows}
-            </tbody>
-          </table>
-        </div>
-
-        <div class="pricing-section">
-          <table class="pricing-table">
-            <tr>
-              <td><strong>Subtotal:</strong></td>
-              <td class="text-right">${this.formatCurrency(quotation.pricing.subtotal, quotation.pricing.currency)}</td>
-            </tr>
-            ${
-              quotation.pricing.discount > 0
-                ? `
-            <tr>
-              <td><strong>Discount:</strong></td>
-              <td class="text-right">-${this.formatCurrency(quotation.pricing.discount, quotation.pricing.currency)}</td>
-            </tr>`
-                : ''
-            }
-            <tr>
-              <td><strong>Tax (${(quotation.pricing.taxRate * 100).toFixed(0)}%):</strong></td>
-              <td class="text-right">${this.formatCurrency(quotation.pricing.taxAmount, quotation.pricing.currency)}</td>
-            </tr>
-            <tr class="total-row">
-              <td><strong>TOTAL AMOUNT:</strong></td>
-              <td class="text-right"><strong>${this.formatCurrency(quotation.pricing.totalAmount, quotation.pricing.currency)}</strong></td>
-            </tr>
-          </table>
-        </div>
-
-        <div class="payment-info-section">
-          <h3>Payment Information</h3>
-          <div class="payment-methods">
-            <div class="payment-method">
-              <h4>Bank Transfer</h4>
-              <table class="info-table">
-                <tr><td><strong>Bank Name:</strong></td><td>${this.paymentInfo.bankName}</td></tr>
-                <tr><td><strong>Account Name:</strong></td><td>${this.paymentInfo.bankAccountName}</td></tr>
-                <tr><td><strong>Account Number:</strong></td><td>${this.paymentInfo.bankAccountNumber}</td></tr>
-                <tr><td><strong>SWIFT Code:</strong></td><td>${this.paymentInfo.bankSwiftCode}</td></tr>
-                <tr><td><strong>Sort Code:</strong></td><td>${this.paymentInfo.bankSortCode}</td></tr>
-              </table>
-            </div>
-
-            <div class="payment-method">
-              <h4>Mobile Money</h4>
-              <table class="info-table">
-                <tr><td><strong>Account Name:</strong></td><td>${this.paymentInfo.mobileMoneyAccountName}</td></tr>
-                <tr><td><strong>MTN Number:</strong></td><td>${this.paymentInfo.mobileMoneyMTN}</td></tr>
-                <tr><td><strong>Airtel Number:</strong></td><td>${this.paymentInfo.mobileMoneyAirtel}</td></tr>
-              </table>
+            <div class="grand-total">
+              <span class="grand-total-label">Grand Total</span>
+              <span class="grand-total-amount">${this.formatCurrency(quotation.pricing.totalAmount, quotation.pricing.currency)}</span>
             </div>
           </div>
-        </div>
 
-        ${
-          quotation.termsAndConditions
-            ? `
-        <div class="terms-section">
-          <h3>Terms & Conditions</h3>
-          <p>${quotation.termsAndConditions}</p>
-        </div>`
-            : ''
-        }
-
-        ${
-          quotation.notes
-            ? `
-        <div class="notes-section">
-          <h3>Notes</h3>
-          <p>${quotation.notes}</p>
-        </div>`
-            : ''
-        }
-
-        <div class="signature-section">
-          <div class="signature-block-single">
-            <p><strong>Prepared by:</strong> ${quotation.createdBy?.fullName || 'Authorized Representative'}</p>
-            <div class="signature-line-container">
-              <p><strong>Signature:</strong></p>
-              ${
-                quotation.createdBy?.signature?.data
-                  ? `<div class="signature-image-container">
-                  ${
-                    quotation.createdBy.signature.type === 'canvas'
-                      ? `<img src="${quotation.createdBy.signature.data}" alt="Signature" class="signature-img" />`
-                      : `<img src="${quotation.createdBy.signature.data}" alt="Signature" class="signature-img" />`
-                  }
-                </div>`
-                  : '<div class="signature-placeholder">_____________________</div>'
-              }
+          <!-- Payment Section -->
+          <div class="payment-section">
+            <div class="bank-details">
+              <h3 class="payment-title">Bank Details</h3>
+              <div class="payment-row"><span class="payment-label">Account Number:</span><span class="payment-value">${this.paymentInfo.bankAccountNumber}</span></div>
+              <div class="payment-row"><span class="payment-label">Account Name:</span><span class="payment-value">${this.paymentInfo.bankAccountName}</span></div>
+              <div class="payment-row"><span class="payment-label">Bank Name:</span><span class="payment-value">${this.paymentInfo.bankName}</span></div>
+              <div class="payment-row"><span class="payment-label">Swift Code:</span><span class="payment-value">${this.paymentInfo.bankSwiftCode}</span></div>
+              <div class="payment-row"><span class="payment-label">Sort Code:</span><span class="payment-value">${this.paymentInfo.bankSortCode}</span></div>
             </div>
-            <p><strong>Date:</strong> ${createdDate}</p>
-          </div>
-        </div>
 
-        <div class="footer">
-          <p><em>Thank you for choosing ${this.companyInfo.name}</em></p>
+            <div class="mobile-money">
+              <h3 class="payment-title">MOBILE MONEY</h3>
+              <div class="payment-row"><span class="payment-label">Account Name:</span><span class="payment-value">${this.paymentInfo.mobileMoneyAccountName}</span></div>
+              <div class="payment-row"><span class="payment-label"></span><span class="payment-value">${this.paymentInfo.mobileMoneyMTN}</span></div>
+              <div class="payment-row"><span class="payment-label"></span><span class="payment-value">${this.paymentInfo.mobileMoneyAirtel}</span></div>
+            </div>
+          </div>
+
+          <!-- Note Section -->
+          <div class="note-section">
+            <h3 class="note-title">NOTE:</h3>
+            <p class="note-text">30% down payment should be provided to Aces Movers and Relocation Company before the move.</p>
+            ${quotation.notes ? `<p class="note-text">${quotation.notes}</p>` : ''}
+          </div>
+
+          <!-- Footer Section -->
+          <div class="footer-section">
+            <p class="footer-contact">${this.companyInfo.email}</p>
+            <p class="footer-contact">${this.companyInfo.phone}</p>
+            <p class="footer-contact">${this.companyInfo.website}</p>
+            <p class="footer-contact">${this.companyInfo.phoneSecondary}</p>
+            <p class="footer-message">Thank you for the support. We look forward to working with you in the future.</p>
+          </div>
         </div>
       </body>
       </html>
@@ -654,6 +639,354 @@ class PDFService {
         </div>
       </body>
       </html>
+    `;
+  }
+
+  /**
+   * Get quotation-specific CSS styles matching the sample design
+   */
+  getQuotationStyles() {
+    return `
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: Arial, sans-serif;
+        font-size: 10px;
+        line-height: 1.2;
+        color: #000;
+        background: white;
+      }
+
+      .page-container {
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 5px 20px 5px 20px;
+      }
+
+      /* Header Section */
+      .header-section {
+        margin-bottom: 15px;
+        border-bottom: 3px solid #ccc;
+        padding-bottom: 10px;
+      }
+
+      /* Top Row: Logo/Company vs QUOTATION word */
+      .top-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 8px;
+      }
+
+      .logo-company-section {
+        /* Left side */
+      }
+
+      .company-logo {
+        margin-bottom: 4px;
+      }
+
+      .company-logo .logo-img {
+        height: 56px;
+        width: auto;
+        max-width: 175px;
+      }
+
+      .company-name {
+        font-size: 11px;
+        font-weight: normal;
+        color: #2e8a56;
+        margin: 0;
+        line-height: 1.1;
+      }
+
+      .quotation-header {
+        font-size: 16px;
+        font-weight: bold;
+        color: #001BB7;
+        text-align: right;
+      }
+
+      /* Bottom Row: Contact Info vs Quotation Box */
+      .bottom-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+      }
+
+      .contact-info {
+        /* Left side */
+      }
+
+      .company-address,
+      .company-location,
+      .company-phone {
+        font-size: 10px;
+        color: #333;
+        margin: 1px 0;
+        line-height: 1.2;
+      }
+
+      .company-email,
+      .company-website {
+        font-size: 10px;
+        color: #2563eb;
+        margin: 1px 0;
+        line-height: 1.2;
+      }
+
+      .quotation-details-box {
+        border: 2px solid #9ca3af;
+        padding: 10px;
+        width: 200px;
+        background: white;
+      }
+
+      .quotation-info {
+        width: 100%;
+        font-size: 9px;
+      }
+
+      .quotation-info td {
+        padding: 2px 5px;
+        text-align: left;
+      }
+
+      .quotation-info .label {
+        font-weight: bold;
+        white-space: nowrap;
+        width: 80px;
+      }
+
+      .quotation-info .value {
+        font-weight: normal;
+      }
+
+      /* Client Section */
+      .client-section {
+        margin: 25px 0;
+      }
+
+      .section-title {
+        font-size: 11px;
+        font-weight: bold;
+        color: #333;
+        margin-bottom: 10px;
+        border-bottom: 1px solid #ddd;
+        padding-bottom: 3px;
+      }
+
+      .client-details {
+        display: flex;
+        gap: 30px;
+        font-size: 9px;
+      }
+
+      .client-column-1,
+      .client-column-2 {
+        flex: 1;
+      }
+
+      .client-info-row {
+        margin-bottom: 4px;
+        line-height: 1.3;
+      }
+
+      .client-label {
+        font-weight: bold;
+        color: #333;
+        display: inline;
+        margin-right: 5px;
+      }
+
+      .client-value {
+        color: #000;
+        display: inline;
+      }
+
+      /* Services Section */
+      .services-section {
+        margin: 25px 0;
+      }
+
+      .services-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 9px;
+        margin-bottom: 15px;
+      }
+
+      .services-header th {
+        background-color: #6b7280;
+        color: white;
+        padding: 8px 6px;
+        text-align: left;
+        font-weight: bold;
+        border: 1px solid #6b7280;
+        font-size: 9px;
+      }
+
+      .col-number {
+        width: 30px;
+        text-align: center;
+      }
+
+      .col-service {
+        width: 80px;
+      }
+
+      .col-description {
+        width: auto;
+      }
+
+      .col-amount {
+        width: 100px;
+        text-align: right;
+      }
+
+      .services-table tbody td {
+        padding: 8px 6px;
+        border: 1px solid #d1d5db;
+        vertical-align: top;
+        font-size: 9px;
+      }
+
+      .services-table tbody tr:nth-child(even) {
+        background-color: #f9f9f9;
+      }
+
+      .service-number {
+        text-align: center;
+        font-weight: bold;
+      }
+
+      .service-name {
+        font-weight: bold;
+      }
+
+      .service-description {
+        line-height: 1.3;
+      }
+
+      .service-amount {
+        text-align: right;
+        font-weight: bold;
+      }
+
+      .grand-total {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        gap: 20px;
+        margin-top: 10px;
+        padding: 8px 0;
+        border-top: 2px solid #333;
+      }
+
+      .grand-total-label {
+        font-size: 11px;
+        font-weight: bold;
+        color: #333;
+      }
+
+      .grand-total-amount {
+        font-size: 14px;
+        color: #16a34a;
+        font-weight: bold;
+      }
+
+      /* Payment Section */
+      .payment-section {
+        display: flex;
+        gap: 50px;
+        margin: 25px 0;
+      }
+
+      .bank-details,
+      .mobile-money {
+        flex: 1;
+      }
+
+      .payment-title {
+        font-size: 10px;
+        font-weight: bold;
+        color: #16a34a;
+        margin-bottom: 8px;
+        text-decoration: underline;
+      }
+
+      .payment-row {
+        margin-bottom: 3px;
+        font-size: 8px;
+        line-height: 1.3;
+      }
+
+      .payment-label {
+        font-weight: bold;
+        color: #333;
+        display: inline;
+        margin-right: 5px;
+      }
+
+      .payment-value {
+        color: #000;
+        display: inline;
+      }
+
+      /* Note Section */
+      .note-section {
+        margin: 25px 0;
+      }
+
+      .note-title {
+        font-size: 11px;
+        font-weight: bold;
+        color: #d97706;
+        margin-bottom: 5px;
+      }
+
+      .note-text {
+        font-size: 9px;
+        color: #333;
+        line-height: 1.4;
+        margin-bottom: 5px;
+      }
+
+      /* Footer Section */
+      .footer-section {
+        text-align: center;
+        margin-top: 30px;
+        padding-top: 15px;
+        border-top: 1px solid #ccc;
+      }
+
+      .footer-contact {
+        font-size: 9px;
+        color: #333;
+        margin: 1px 0;
+      }
+
+      .footer-message {
+        font-size: 10px;
+        color: #16a34a;
+        font-style: italic;
+        margin-top: 10px;
+      }
+
+      @page {
+        margin: 15mm;
+      }
+
+      @media print {
+        .page-container {
+          max-width: none;
+          padding: 0;
+        }
+      }
     `;
   }
 

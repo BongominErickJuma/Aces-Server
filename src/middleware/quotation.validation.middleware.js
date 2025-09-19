@@ -19,7 +19,7 @@ const quotationValidation = [
     .withMessage('Please provide a valid phone number'),
 
   body('client.email')
-    .optional()
+    .optional({ nullable: true, checkFalsy: true })
     .isEmail()
     .withMessage('Please provide a valid email'),
 

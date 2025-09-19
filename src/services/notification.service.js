@@ -178,8 +178,34 @@ class NotificationService {
 
       if (!user) return;
 
-      // Check for role changes
-      if (updateDescription?.updatedFields?.role) {
+      // Check for user suspension
+      if (updateDescription?.updatedFields?.status === 'suspended') {
+        const allUsers = await User.find({ status: 'active' });
+        const allUserIds = allUsers.map(u => u._id);
+
+        await Notification.createUserSuspensionNotification(
+          'user_suspended',
+          user.fullName,
+          user._id,
+          null,
+          allUserIds
+        );
+      }
+      // Check for user reactivation (when status changes to 'active')
+      else if (updateDescription?.updatedFields?.status === 'active') {
+        const allUsers = await User.find({ status: 'active' });
+        const allUserIds = allUsers.map(u => u._id);
+
+        await Notification.createUserSuspensionNotification(
+          'user_reactivated',
+          user.fullName,
+          user._id,
+          null,
+          allUserIds
+        );
+      }
+      // Check for role changes (specific notification)
+      else if (updateDescription?.updatedFields?.role) {
         const admins = await User.find({
           role: 'admin',
           status: 'active',
@@ -195,9 +221,8 @@ class NotificationService {
           [...adminIds, userId]
         );
       }
-
-      // Check for profile completion
-      if (updateDescription?.updatedFields?.profileCompleted === true) {
+      // Check for profile completion (specific notification)
+      else if (updateDescription?.updatedFields?.profileCompleted === true) {
         const admins = await User.find({ role: 'admin', status: 'active' });
         const adminIds = admins.map(admin => admin._id);
 
@@ -209,11 +234,62 @@ class NotificationService {
           adminIds
         );
       }
+      // Check for any other user update with detailed changes
+      // Note: This is now handled by the user controllers to include previous values
+      // Keeping this as fallback for change streams but with reduced priority
+      else if (
+        updateDescription?.updatedFields &&
+        Object.keys(updateDescription.updatedFields).length > 0
+      ) {
+        // Skip basic profile fields as they're handled by controllers
+        const basicProfileFields = [
+          'fullName',
+          'phonePrimary',
+          'phoneSecondary',
+          'address',
+          'emergencyContact'
+        ];
+        const nonProfileFields = Object.keys(
+          updateDescription.updatedFields
+        ).filter(field => !basicProfileFields.includes(field));
+
+        // Only proceed if there are non-basic profile field changes
+        if (nonProfileFields.length > 0) {
+          const admins = await User.find({ role: 'admin', status: 'active' });
+          const adminIds = admins.map(admin => admin._id);
+
+          // Capture field changes for detailed notification
+          const changes = nonProfileFields.map(field => {
+            const newValue = updateDescription.updatedFields[field];
+            const fieldLabel = field.split('.').pop(); // Get last part if nested
+            return { field: fieldLabel, newValue };
+          });
+
+          await Notification.createUserNotificationWithDetails(
+            'user_updated',
+            user.fullName,
+            user._id,
+            user._id,
+            adminIds,
+            changes
+          );
+        }
+      }
     }
 
     if (operationType === 'delete') {
-      // User deleted - would need to be handled differently since document is gone
-      console.log('👤 User deleted:', documentKey._id);
+      // User deleted - notify all users
+      const allUsers = await User.find({ status: 'active' });
+      const allUserIds = allUsers.map(u => u._id);
+
+      // Since user is deleted, we need to use the documentKey
+      await Notification.createUserSuspensionNotification(
+        'user_deleted',
+        'User', // We don't have the name anymore
+        documentKey._id,
+        null,
+        allUserIds
+      );
     }
   }
 
@@ -230,8 +306,11 @@ class NotificationService {
       const admins = await User.find({ status: 'active', role: 'admin' });
       const adminIds = admins.map(admin => admin._id);
 
-      // Include creator and relevant stakeholders
-      const stakeholderIds = new Set([...adminIds, quotation.createdBy]);
+      // Include creator and relevant stakeholders (deduplicate ObjectIds properly)
+      const stakeholderIds = new Set([
+        ...adminIds.map(id => id.toString()),
+        quotation.createdBy.toString()
+      ]);
 
       await Notification.createDocumentNotification(
         'document_created',
@@ -239,7 +318,7 @@ class NotificationService {
         quotation._id,
         quotation.quotationNumber,
         quotation.createdBy,
-        Array.from(stakeholderIds)
+        Array.from(stakeholderIds).map(id => new mongoose.Types.ObjectId(id))
       );
     }
 
@@ -249,12 +328,15 @@ class NotificationService {
 
       if (!quotation) return;
 
-      // Check for conversion to receipt
+      // Check for conversion to receipt first (specific notification)
       if (updateDescription?.updatedFields?.converted === true) {
         // Quotation converted - notify all stakeholders (admins + creator)
         const admins = await User.find({ status: 'active', role: 'admin' });
         const adminIds = admins.map(admin => admin._id);
-        const stakeholderIds = new Set([...adminIds, quotation.createdBy]);
+        const stakeholderIds = new Set([
+          ...adminIds.map(id => id.toString()),
+          quotation.createdBy.toString()
+        ]);
 
         await Notification.createDocumentNotification(
           'quotation_converted',
@@ -262,24 +344,54 @@ class NotificationService {
           quotation._id,
           quotation.quotationNumber,
           null,
-          Array.from(stakeholderIds)
+          Array.from(stakeholderIds).map(id => new mongoose.Types.ObjectId(id))
         );
       }
-
-      // Check for status changes
-      if (updateDescription?.updatedFields?.status) {
-        // Document edited - notify all stakeholders (admins + creator per documentation)
+      // Check for any other update with detailed field changes
+      else if (
+        updateDescription?.updatedFields &&
+        Object.keys(updateDescription.updatedFields).length > 0
+      ) {
+        // Document edited - notify all stakeholders (admins only per requirements)
         const admins = await User.find({ status: 'active', role: 'admin' });
         const adminIds = admins.map(admin => admin._id);
-        const stakeholderIds = new Set([...adminIds, quotation.createdBy]);
 
-        await Notification.createDocumentNotification(
+        // Capture detailed field changes
+        const changes = [];
+        for (const [field, newValue] of Object.entries(
+          updateDescription.updatedFields
+        )) {
+          const fieldParts = field.split('.');
+          let fieldLabel = fieldParts[fieldParts.length - 1];
+
+          // Map field names to user-friendly labels
+          const fieldMapping = {
+            name: 'Client Name',
+            company: 'Company',
+            email: 'Email',
+            phonePrimary: 'Primary Phone',
+            phoneSecondary: 'Secondary Phone',
+            from: 'Move From Location',
+            to: 'Move To Location',
+            validUntil: 'Valid Until',
+            services: 'Services',
+            subTotal: 'Subtotal',
+            tax: 'Tax',
+            grandTotal: 'Grand Total'
+          };
+
+          fieldLabel = fieldMapping[fieldLabel] || fieldLabel;
+          changes.push({ field: fieldLabel, newValue });
+        }
+
+        await Notification.createDocumentNotificationWithDetails(
           'document_updated',
           'Quotation',
           quotation._id,
           quotation.quotationNumber,
           null,
-          Array.from(stakeholderIds)
+          adminIds,
+          changes
         );
       }
     }
@@ -302,8 +414,11 @@ class NotificationService {
       const admins = await User.find({ status: 'active', role: 'admin' });
       const adminIds = admins.map(admin => admin._id);
 
-      // Include creator and relevant stakeholders
-      const stakeholderIds = new Set([...adminIds, receipt.createdBy]);
+      // Include creator and relevant stakeholders (deduplicate ObjectIds properly)
+      const stakeholderIds = new Set([
+        ...adminIds.map(id => id.toString()),
+        receipt.createdBy.toString()
+      ]);
 
       await Notification.createDocumentNotification(
         'document_created',
@@ -311,7 +426,7 @@ class NotificationService {
         receipt._id,
         receipt.receiptNumber,
         receipt.createdBy,
-        Array.from(stakeholderIds)
+        Array.from(stakeholderIds).map(id => new mongoose.Types.ObjectId(id))
       );
     }
 
@@ -321,12 +436,18 @@ class NotificationService {
 
       if (!receipt) return;
 
-      // Check for payment status changes
-      if (updateDescription?.updatedFields?.paymentStatus === 'paid') {
+      // Check for payment status changes first (specific notification)
+      if (
+        updateDescription?.updatedFields?.['payment.status'] === 'paid' ||
+        updateDescription?.updatedFields?.paymentStatus === 'paid'
+      ) {
         // Payment received - notify creator and admins
         const admins = await User.find({ status: 'active', role: 'admin' });
         const adminIds = admins.map(admin => admin._id);
-        const stakeholderIds = new Set([...adminIds, receipt.createdBy]);
+        const stakeholderIds = new Set([
+          ...adminIds.map(id => id.toString()),
+          receipt.createdBy.toString()
+        ]);
 
         await Notification.createDocumentNotification(
           'payment_received',
@@ -334,24 +455,55 @@ class NotificationService {
           receipt._id,
           receipt.receiptNumber,
           null,
-          Array.from(stakeholderIds)
+          Array.from(stakeholderIds).map(id => new mongoose.Types.ObjectId(id))
         );
       }
-
-      // Check for other status changes
-      if (updateDescription?.updatedFields?.status) {
-        // Document edited - notify all stakeholders (admins + creator per documentation)
+      // Check for any other update with detailed field changes
+      else if (
+        updateDescription?.updatedFields &&
+        Object.keys(updateDescription.updatedFields).length > 0
+      ) {
+        // Document edited - notify admins only per requirements
         const admins = await User.find({ status: 'active', role: 'admin' });
         const adminIds = admins.map(admin => admin._id);
-        const stakeholderIds = new Set([...adminIds, receipt.createdBy]);
 
-        await Notification.createDocumentNotification(
+        // Capture detailed field changes
+        const changes = [];
+        for (const [field, newValue] of Object.entries(
+          updateDescription.updatedFields
+        )) {
+          const fieldParts = field.split('.');
+          let fieldLabel = fieldParts[fieldParts.length - 1];
+
+          // Map field names to user-friendly labels
+          const fieldMapping = {
+            name: 'Client Name',
+            company: 'Company',
+            email: 'Email',
+            phonePrimary: 'Primary Phone',
+            phoneSecondary: 'Secondary Phone',
+            commitmentFeePaid: 'Commitment Fee Paid',
+            totalMovingAmount: 'Total Moving Amount',
+            finalPaymentReceived: 'Final Payment Received',
+            amountPaid: 'Amount Paid',
+            balance: 'Balance',
+            totalAmount: 'Total Amount',
+            paymentMethod: 'Payment Method',
+            dueDate: 'Due Date'
+          };
+
+          fieldLabel = fieldMapping[fieldLabel] || fieldLabel;
+          changes.push({ field: fieldLabel, newValue });
+        }
+
+        await Notification.createDocumentNotificationWithDetails(
           'document_updated',
           'Receipt',
           receipt._id,
           receipt.receiptNumber,
           null,
-          Array.from(stakeholderIds)
+          adminIds,
+          changes
         );
       }
     }
@@ -376,7 +528,10 @@ class NotificationService {
       // Quotation expired - notify all stakeholders (admins + creator)
       const admins = await User.find({ status: 'active', role: 'admin' });
       const adminIds = admins.map(admin => admin._id);
-      const stakeholderIds = new Set([...adminIds, quotation.createdBy]);
+      const stakeholderIds = new Set([
+        ...adminIds.map(id => id.toString()),
+        quotation.createdBy.toString()
+      ]);
 
       await Notification.createDocumentNotification(
         'quotation_expired',
@@ -384,7 +539,7 @@ class NotificationService {
         quotation._id,
         quotation.quotationNumber,
         null,
-        Array.from(stakeholderIds)
+        Array.from(stakeholderIds).map(id => new mongoose.Types.ObjectId(id))
       );
 
       // Update quotation status to expired
@@ -413,7 +568,10 @@ class NotificationService {
       // Payment overdue - notify all stakeholders (admins + creator)
       const admins = await User.find({ status: 'active', role: 'admin' });
       const adminIds = admins.map(admin => admin._id);
-      const stakeholderIds = new Set([...adminIds, receipt.createdBy]);
+      const stakeholderIds = new Set([
+        ...adminIds.map(id => id.toString()),
+        receipt.createdBy.toString()
+      ]);
 
       await Notification.createDocumentNotification(
         'payment_overdue',
@@ -421,7 +579,7 @@ class NotificationService {
         receipt._id,
         receipt.receiptNumber,
         null,
-        Array.from(stakeholderIds)
+        Array.from(stakeholderIds).map(id => new mongoose.Types.ObjectId(id))
       );
     }
 
@@ -437,18 +595,26 @@ class NotificationService {
     const allUsers = await User.find({ status: 'active' });
     const userIds = allUsers.map(user => user._id);
 
-    const notifications = userIds.map(userId => ({
-      userId,
+    // Generate notification group for system notifications
+    const dateStr = new Date().toISOString().split('T')[0].replace(/-/g, '_');
+    const notificationGroup = `${type}_system_${dateStr}`;
+
+    // Create a single notification for all users
+    const notification = {
+      userId: userIds[0], // Primary recipient (for legacy compatibility)
       type,
       title,
       message,
       priority,
+      notificationGroup,
+      recipientUserIds: userIds,
+      adminManaged: true,
       metadata: {
         system: true
       }
-    }));
+    };
 
-    return await Notification.insertMany(notifications);
+    return await Notification.create(notification);
   }
 
   /**

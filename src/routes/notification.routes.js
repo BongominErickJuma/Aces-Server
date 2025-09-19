@@ -5,7 +5,7 @@
 
 const express = require('express');
 const router = express.Router();
-const { body } = require('express-validator');
+const { body, param, query } = require('express-validator');
 
 const {
   getUserNotifications,
@@ -18,6 +18,22 @@ const {
   getNotificationStats,
   cleanupOldNotifications
 } = require('../controllers/notification.controller');
+
+// Admin-specific notification management
+const {
+  getNotificationSummary,
+  getPendingReview,
+  bulkDeleteNotifications,
+  extendNotificationLifecycle,
+  updateNotificationSettings,
+  getNotificationSettings,
+  getNotificationAnalytics,
+  runLifecycleJob,
+  runCleanupJob,
+  getCleanupPreview,
+  getSystemHealth,
+  getGroupStats
+} = require('../controllers/admin/admin.notification.controller');
 
 const { authenticate, requireAdmin } = require('../middleware/auth.middleware');
 
@@ -141,5 +157,258 @@ router.get('/stats', requireAdmin, getNotificationStats);
  * @query days - Number of days to keep (default: 90)
  */
 router.delete('/cleanup', requireAdmin, cleanupOldNotifications);
+
+// Advanced Admin Management Routes (Phase 4)
+
+/**
+ * @route GET /api/notifications/admin/summary
+ * @desc Get notification summary for admin dashboard
+ * @access Admin only
+ */
+router.get(
+  '/admin/summary',
+  requireAdmin,
+  [
+    query('page')
+      .optional()
+      .isInt({ min: 1 })
+      .withMessage('Page must be a positive integer'),
+    query('limit')
+      .optional()
+      .isInt({ min: 1, max: 100 })
+      .withMessage('Limit must be between 1 and 100'),
+    query('groupBy')
+      .optional()
+      .isIn(['notificationGroup', 'type', 'lifecycleStatus'])
+      .withMessage('Invalid groupBy parameter'),
+    query('sortBy')
+      .optional()
+      .isIn(['oldestCreated', 'newestCreated', 'count', 'readPercentage'])
+      .withMessage('Invalid sortBy parameter'),
+    query('sortOrder')
+      .optional()
+      .isIn(['asc', 'desc'])
+      .withMessage('Sort order must be asc or desc'),
+    query('lifecycleStatus')
+      .optional()
+      .isIn(['active', 'pending_review', 'extended', 'archived'])
+      .withMessage('Invalid lifecycle status'),
+    query('dateFrom')
+      .optional()
+      .isISO8601()
+      .withMessage('Invalid date format for dateFrom'),
+    query('dateTo')
+      .optional()
+      .isISO8601()
+      .withMessage('Invalid date format for dateTo')
+  ],
+  getNotificationSummary
+);
+
+/**
+ * @route GET /api/notifications/admin/pending-review
+ * @desc Get notifications requiring admin review
+ * @access Admin only
+ */
+router.get(
+  '/admin/pending-review',
+  requireAdmin,
+  [
+    query('page')
+      .optional()
+      .isInt({ min: 1 })
+      .withMessage('Page must be a positive integer'),
+    query('limit')
+      .optional()
+      .isInt({ min: 1, max: 100 })
+      .withMessage('Limit must be between 1 and 100'),
+    query('sortBy')
+      .optional()
+      .isIn(['createdAt', 'reminderSentAt', 'type'])
+      .withMessage('Invalid sortBy parameter'),
+    query('sortOrder')
+      .optional()
+      .isIn(['asc', 'desc'])
+      .withMessage('Sort order must be asc or desc')
+  ],
+  getPendingReview
+);
+
+/**
+ * @route DELETE /api/notifications/admin/bulk-delete
+ * @desc Bulk delete notifications based on criteria
+ * @access Admin only
+ */
+router.delete(
+  '/admin/bulk-delete',
+  requireAdmin,
+  [
+    body('confirmDeletion').isBoolean().withMessage('Confirmation is required'),
+    body('notificationIds')
+      .optional()
+      .isArray()
+      .withMessage('Notification IDs must be an array'),
+    body('notificationIds.*')
+      .optional()
+      .isMongoId()
+      .withMessage('Invalid notification ID format'),
+    body('criteria')
+      .optional()
+      .isObject()
+      .withMessage('Criteria must be an object'),
+    body('criteria.lifecycleStatus')
+      .optional()
+      .isIn(['active', 'pending_review', 'extended', 'archived'])
+      .withMessage('Invalid lifecycle status'),
+    body('criteria.type')
+      .optional()
+      .isString()
+      .withMessage('Type must be a string'),
+    body('criteria.isReadByAllUsers')
+      .optional()
+      .isBoolean()
+      .withMessage('isReadByAllUsers must be boolean'),
+    body('criteria.olderThanDays')
+      .optional()
+      .isInt({ min: 1 })
+      .withMessage('olderThanDays must be a positive integer'),
+    body('criteria.notificationGroup')
+      .optional()
+      .isString()
+      .withMessage('Notification group must be a string')
+  ],
+  bulkDeleteNotifications
+);
+
+/**
+ * @route PUT /api/notifications/admin/:id/extend
+ * @desc Extend notification lifecycle
+ * @access Admin only
+ */
+router.put(
+  '/admin/:id/extend',
+  requireAdmin,
+  [
+    param('id').isMongoId().withMessage('Invalid notification ID'),
+    body('extendDays')
+      .optional()
+      .isInt({ min: 1, max: 365 })
+      .withMessage('Extend days must be between 1 and 365'),
+    body('reason')
+      .optional()
+      .isString()
+      .isLength({ max: 500 })
+      .withMessage('Reason must be a string with max 500 characters')
+  ],
+  extendNotificationLifecycle
+);
+
+/**
+ * @route PUT /api/notifications/admin/settings
+ * @desc Update notification settings
+ * @access Admin only
+ */
+router.put(
+  '/admin/settings',
+  requireAdmin,
+  [
+    body('autoDeleteReadNotifications')
+      .optional()
+      .isBoolean()
+      .withMessage('autoDeleteReadNotifications must be boolean'),
+    body('maxRetentionDays')
+      .optional()
+      .isInt({ min: 1, max: 365 })
+      .withMessage('Max retention days must be between 1 and 365'),
+    body('reminderDaysBeforeExpiry')
+      .optional()
+      .isInt({ min: 1, max: 7 })
+      .withMessage('Reminder days must be between 1 and 7'),
+    body('importantNotificationTypes')
+      .optional()
+      .isArray()
+      .withMessage('Important notification types must be an array'),
+    body('importantNotificationTypes.*')
+      .optional()
+      .isString()
+      .withMessage('Notification type must be a string'),
+    body('autoExtendImportant')
+      .optional()
+      .isBoolean()
+      .withMessage('autoExtendImportant must be boolean'),
+    body('notificationBatchSize')
+      .optional()
+      .isInt({ min: 10, max: 1000 })
+      .withMessage('Batch size must be between 10 and 1000')
+  ],
+  updateNotificationSettings
+);
+
+/**
+ * @route GET /api/notifications/admin/settings
+ * @desc Get current notification settings
+ * @access Admin only
+ */
+router.get('/admin/settings', requireAdmin, getNotificationSettings);
+
+/**
+ * @route GET /api/notifications/admin/analytics
+ * @desc Get notification analytics
+ * @access Admin only
+ */
+router.get(
+  '/admin/analytics',
+  requireAdmin,
+  [
+    query('dateFrom')
+      .optional()
+      .isISO8601()
+      .withMessage('Invalid date format for dateFrom'),
+    query('dateTo')
+      .optional()
+      .isISO8601()
+      .withMessage('Invalid date format for dateTo'),
+    query('groupBy')
+      .optional()
+      .isIn(['day', 'week', 'month'])
+      .withMessage('GroupBy must be day, week, or month')
+  ],
+  getNotificationAnalytics
+);
+
+/**
+ * @route POST /api/notifications/admin/run-lifecycle-job
+ * @desc Manually run the lifecycle job
+ * @access Admin only
+ */
+router.post('/admin/run-lifecycle-job', requireAdmin, runLifecycleJob);
+
+/**
+ * @route POST /api/notifications/admin/run-cleanup-job
+ * @desc Manually run the cleanup job
+ * @access Admin only
+ */
+router.post('/admin/run-cleanup-job', requireAdmin, runCleanupJob);
+
+/**
+ * @route GET /api/notifications/admin/cleanup-preview
+ * @desc Get cleanup preview (dry run)
+ * @access Admin only
+ */
+router.get('/admin/cleanup-preview', requireAdmin, getCleanupPreview);
+
+/**
+ * @route GET /api/notifications/admin/system-health
+ * @desc Get comprehensive system health and monitoring report
+ * @access Admin only
+ */
+router.get('/admin/system-health', requireAdmin, getSystemHealth);
+
+/**
+ * @route GET /api/notifications/admin/group-stats
+ * @desc Get notification group breakdown statistics
+ * @access Admin only
+ */
+router.get('/admin/group-stats', requireAdmin, getGroupStats);
 
 module.exports = router;

@@ -250,6 +250,80 @@ const updateQuotation = async (req, res) => {
       }));
     }
 
+    // Capture field changes for notification
+    const changes = [];
+    const oldQuotation = quotation.toObject(); // Get current state
+
+    // Helper function to format values for display
+    const formatValue = value => {
+      if (value === null || value === undefined) return 'Not set';
+      if (typeof value === 'object' && value instanceof Date) {
+        return value.toLocaleDateString();
+      }
+      if (typeof value === 'object' && value !== null) {
+        return JSON.stringify(value);
+      }
+      return value.toString();
+    };
+
+    // Helper function to get nested property
+    const getNestedValue = (obj, path) => {
+      return path
+        .split('.')
+        .reduce((current, key) => current && current[key], obj);
+    };
+
+    // Check for changes in all updatable fields
+    const fieldsToCheck = [
+      { path: 'type', label: 'Move Type' },
+      { path: 'client.name', label: 'Client Name' },
+      { path: 'client.phone', label: 'Client Phone' },
+      { path: 'client.email', label: 'Client Email' },
+      { path: 'client.company', label: 'Company Name' },
+      { path: 'locations.from', label: 'Move From Location' },
+      { path: 'locations.to', label: 'Move To Location' },
+      { path: 'locations.movingDate', label: 'Moving Date' },
+      { path: 'pricing.currency', label: 'Currency' },
+      { path: 'pricing.discount', label: 'Discount' },
+      { path: 'pricing.taxRate', label: 'Tax Rate' },
+      { path: 'termsAndConditions', label: 'Terms and Conditions' },
+      { path: 'notes', label: 'Notes' }
+    ];
+
+    for (const field of fieldsToCheck) {
+      const oldValue = getNestedValue(oldQuotation, field.path);
+      const newValue = getNestedValue(req.body, field.path);
+
+      // Only track changes if the field is explicitly provided in the request body
+      // and the value is actually different from the current value
+      if (
+        newValue !== undefined &&
+        JSON.stringify(oldValue) !== JSON.stringify(newValue) &&
+        formatValue(oldValue) !== formatValue(newValue) // Additional check for formatted values
+      ) {
+        changes.push({
+          field: field.label,
+          oldValue: formatValue(oldValue),
+          newValue: formatValue(newValue)
+        });
+      }
+    }
+
+    // Special handling for services array
+    if (req.body.services) {
+      const oldServices = oldQuotation.services || [];
+      const newServices = req.body.services || [];
+
+      if (JSON.stringify(oldServices) !== JSON.stringify(newServices)) {
+        // For services, we'll show a general change message since individual service changes are complex
+        changes.push({
+          field: 'Services',
+          oldValue: `${oldServices.length} service(s)`,
+          newValue: `${newServices.length} service(s)`
+        });
+      }
+    }
+
     // Update quotation
     Object.assign(quotation, req.body);
     quotation.version += 1;
@@ -258,6 +332,37 @@ const updateQuotation = async (req, res) => {
 
     // Populate updated quotation
     await quotation.populate('createdBy', 'fullName email');
+
+    // Send notification to admins if there were changes
+    if (changes.length > 0) {
+      try {
+        const User = require('../models/User.model');
+
+        // Get all admin users
+        const admins = await User.find({ role: 'admin', status: 'active' });
+        const adminIds = admins.map(admin => admin._id);
+
+        if (adminIds.length > 0) {
+          // Use the Notification model directly to create the detailed notification
+          const Notification = require('../models/Notification.model');
+          await Notification.createDocumentNotificationWithDetails(
+            'document_updated',
+            'Quotation',
+            quotation._id,
+            quotation.quotationNumber,
+            req.user._id, // actor (person who made the change)
+            adminIds,
+            changes
+          );
+        }
+      } catch (notifError) {
+        console.error(
+          'Failed to send quotation update notification:',
+          notifError
+        );
+        // Don't fail the request if notification fails
+      }
+    }
 
     ApiResponse.success(res, { quotation }, 'Quotation updated successfully');
   } catch (error) {
@@ -293,6 +398,34 @@ const deleteQuotation = async (req, res) => {
     }
 
     await Quotation.findByIdAndDelete(id);
+
+    // Send notification to all admin users about deletion
+    try {
+      const User = require('../models/User.model');
+
+      // Get all admin users
+      const admins = await User.find({ role: 'admin', status: 'active' });
+      const adminIds = admins.map(admin => admin._id);
+
+      if (adminIds.length > 0) {
+        // Use the Notification model directly to create the deletion notification
+        const Notification = require('../models/Notification.model');
+        await Notification.createDocumentNotification(
+          'document_deleted',
+          'Quotation',
+          id, // Use original ID since document is deleted
+          quotation.quotationNumber,
+          req.user._id, // actor (admin who deleted)
+          adminIds
+        );
+      }
+    } catch (notifError) {
+      console.error(
+        'Failed to send quotation delete notification:',
+        notifError
+      );
+      // Don't fail the request if notification fails
+    }
 
     ApiResponse.success(
       res,
@@ -643,6 +776,39 @@ const bulkDeleteQuotations = async (req, res) => {
     const deleteResult = await Quotation.deleteMany({
       _id: { $in: quotationIds }
     });
+
+    // Send individual notifications to all admin users for each deleted quotation
+    if (deleteResult.deletedCount > 0) {
+      try {
+        const User = require('../models/User.model');
+
+        // Get all admin users
+        const admins = await User.find({ role: 'admin', status: 'active' });
+        const adminIds = admins.map(admin => admin._id);
+
+        if (adminIds.length > 0) {
+          // Create individual notification for each deleted quotation
+          const Notification = require('../models/Notification.model');
+
+          for (const quotation of quotations) {
+            await Notification.createDocumentNotification(
+              'document_deleted',
+              'Quotation',
+              quotation._id, // Use the quotation ID
+              quotation.quotationNumber,
+              req.user._id, // actor (admin who deleted)
+              adminIds
+            );
+          }
+        }
+      } catch (notifError) {
+        console.error(
+          'Failed to send quotation delete notifications:',
+          notifError
+        );
+        // Don't fail the request if notification fails
+      }
+    }
 
     ApiResponse.success(
       res,

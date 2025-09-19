@@ -282,11 +282,13 @@ const updateReceipt = async (req, res) => {
     // Handle different receipt types
     if (receipt.receiptType === 'commitment') {
       // COMMITMENT RECEIPT: No services
-      const commitmentFeePaid = req.body.commitmentFeePaid !== undefined
+      const commitmentFeePaid =
+        req.body.commitmentFeePaid !== undefined
           ? req.body.commitmentFeePaid
           : receipt.commitmentFeePaid || 0;
 
-      const totalMovingAmount = req.body.totalMovingAmount !== undefined
+      const totalMovingAmount =
+        req.body.totalMovingAmount !== undefined
           ? req.body.totalMovingAmount
           : receipt.totalMovingAmount || 0;
 
@@ -300,11 +302,13 @@ const updateReceipt = async (req, res) => {
       req.body.payment.balance = totalMovingAmount - commitmentFeePaid;
     } else if (receipt.receiptType === 'final') {
       // FINAL RECEIPT: No services
-      const commitmentFeePaid = req.body.commitmentFeePaid !== undefined
+      const commitmentFeePaid =
+        req.body.commitmentFeePaid !== undefined
           ? req.body.commitmentFeePaid
           : receipt.commitmentFeePaid || 0;
 
-      const finalPaymentReceived = req.body.finalPaymentReceived !== undefined
+      const finalPaymentReceived =
+        req.body.finalPaymentReceived !== undefined
           ? req.body.finalPaymentReceived
           : receipt.finalPaymentReceived || 0;
 
@@ -320,7 +324,8 @@ const updateReceipt = async (req, res) => {
       req.body.payment.balance = 0;
     } else if (receipt.receiptType === 'one_time') {
       // ONE TIME PAYMENT RECEIPT: No services
-      const totalMovingAmount = req.body.totalMovingAmount !== undefined
+      const totalMovingAmount =
+        req.body.totalMovingAmount !== undefined
           ? req.body.totalMovingAmount
           : receipt.totalMovingAmount || 0;
 
@@ -350,6 +355,85 @@ const updateReceipt = async (req, res) => {
         newTotalAmount - (receipt.payment.amountPaid || 0);
     }
 
+    // Capture field changes for notification
+    const changes = [];
+    const oldReceipt = receipt.toObject(); // Get current state
+
+    // Helper function to format values for display
+    const formatValue = value => {
+      if (value === null || value === undefined) return 'Not set';
+      if (typeof value === 'object' && value instanceof Date) {
+        return value.toLocaleDateString();
+      }
+      if (typeof value === 'object' && value !== null) {
+        return JSON.stringify(value);
+      }
+      return value.toString();
+    };
+
+    // Helper function to get nested property
+    const getNestedValue = (obj, path) => {
+      return path
+        .split('.')
+        .reduce((current, key) => current && current[key], obj);
+    };
+
+    // Check for changes in all updatable fields
+    const fieldsToCheck = [
+      { path: 'receiptType', label: 'Receipt Type' },
+      { path: 'client.name', label: 'Client Name' },
+      { path: 'client.phone', label: 'Client Phone' },
+      { path: 'client.email', label: 'Client Email' },
+      { path: 'client.address', label: 'Client Address' },
+      { path: 'locations.from', label: 'Move From Location' },
+      { path: 'locations.to', label: 'Move To Location' },
+      { path: 'locations.movingDate', label: 'Moving Date' },
+      { path: 'commitmentFeePaid', label: 'Commitment Fee Paid' },
+      { path: 'totalMovingAmount', label: 'Total Moving Amount' },
+      { path: 'finalPaymentReceived', label: 'Final Payment Received' },
+      { path: 'payment.currency', label: 'Currency' },
+      { path: 'payment.method', label: 'Payment Method' },
+      { path: 'payment.dueDate', label: 'Due Date' },
+      { path: 'payment.amountPaid', label: 'Amount Paid' },
+      { path: 'payment.balance', label: 'Balance' },
+      { path: 'payment.totalAmount', label: 'Total Amount' },
+      { path: 'notes', label: 'Notes' }
+    ];
+
+    for (const field of fieldsToCheck) {
+      const oldValue = getNestedValue(oldReceipt, field.path);
+      const newValue = getNestedValue(req.body, field.path);
+
+      // Only track changes if the field is explicitly provided in the request body
+      // and the value is actually different from the current value
+      if (
+        newValue !== undefined &&
+        JSON.stringify(oldValue) !== JSON.stringify(newValue) &&
+        formatValue(oldValue) !== formatValue(newValue) // Additional check for formatted values
+      ) {
+        changes.push({
+          field: field.label,
+          oldValue: formatValue(oldValue),
+          newValue: formatValue(newValue)
+        });
+      }
+    }
+
+    // Special handling for services array
+    if (req.body.services) {
+      const oldServices = oldReceipt.services || [];
+      const newServices = req.body.services || [];
+
+      if (JSON.stringify(oldServices) !== JSON.stringify(newServices)) {
+        // For services, we'll show a general change message since individual service changes are complex
+        changes.push({
+          field: 'Services',
+          oldValue: `${oldServices.length} service(s)`,
+          newValue: `${newServices.length} service(s)`
+        });
+      }
+    }
+
     // Set edit tracking for versioning
     receipt._editedBy = req.user._id;
 
@@ -363,6 +447,37 @@ const updateReceipt = async (req, res) => {
       { path: 'createdBy', select: 'fullName email' },
       { path: 'quotationId', select: 'quotationNumber type' }
     ]);
+
+    // Send notification to admins if there were changes
+    if (changes.length > 0) {
+      try {
+        const User = require('../models/User.model');
+
+        // Get all admin users
+        const admins = await User.find({ role: 'admin', status: 'active' });
+        const adminIds = admins.map(admin => admin._id);
+
+        if (adminIds.length > 0) {
+          // Use the Notification model directly to create the detailed notification
+          const Notification = require('../models/Notification.model');
+          await Notification.createDocumentNotificationWithDetails(
+            'document_updated',
+            'Receipt',
+            receipt._id,
+            receipt.receiptNumber,
+            req.user._id, // actor (person who made the change)
+            adminIds,
+            changes
+          );
+        }
+      } catch (notifError) {
+        console.error(
+          'Failed to send receipt update notification:',
+          notifError
+        );
+        // Don't fail the request if notification fails
+      }
+    }
 
     ApiResponse.success(res, { receipt }, 'Receipt updated successfully');
   } catch (error) {
@@ -403,6 +518,31 @@ const deleteReceipt = async (req, res) => {
     }
 
     await Receipt.findByIdAndDelete(id);
+
+    // Send notification to all admin users about deletion
+    try {
+      const User = require('../models/User.model');
+
+      // Get all admin users
+      const admins = await User.find({ role: 'admin', status: 'active' });
+      const adminIds = admins.map(admin => admin._id);
+
+      if (adminIds.length > 0) {
+        // Use the Notification model directly to create the deletion notification
+        const Notification = require('../models/Notification.model');
+        await Notification.createDocumentNotification(
+          'document_deleted',
+          'Receipt',
+          id, // Use original ID since document is deleted
+          receipt.receiptNumber,
+          req.user._id, // actor (admin who deleted)
+          adminIds
+        );
+      }
+    } catch (notifError) {
+      console.error('Failed to send receipt delete notification:', notifError);
+      // Don't fail the request if notification fails
+    }
 
     ApiResponse.success(
       res,
@@ -800,6 +940,39 @@ const bulkDeleteReceipts = async (req, res) => {
 
     // Delete the receipts
     const deleteResult = await Receipt.deleteMany({ _id: { $in: receiptIds } });
+
+    // Send individual notifications to all admin users for each deleted receipt
+    if (deleteResult.deletedCount > 0) {
+      try {
+        const User = require('../models/User.model');
+
+        // Get all admin users
+        const admins = await User.find({ role: 'admin', status: 'active' });
+        const adminIds = admins.map(admin => admin._id);
+
+        if (adminIds.length > 0) {
+          // Create individual notification for each deleted receipt
+          const Notification = require('../models/Notification.model');
+
+          for (const receipt of receipts) {
+            await Notification.createDocumentNotification(
+              'document_deleted',
+              'Receipt',
+              receipt._id, // Use the receipt ID
+              receipt.receiptNumber,
+              req.user._id, // actor (admin who deleted)
+              adminIds
+            );
+          }
+        }
+      } catch (notifError) {
+        console.error(
+          'Failed to send receipt delete notifications:',
+          notifError
+        );
+        // Don't fail the request if notification fails
+      }
+    }
 
     ApiResponse.success(
       res,

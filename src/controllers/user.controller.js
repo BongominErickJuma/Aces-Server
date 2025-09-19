@@ -197,6 +197,34 @@ const createUser = asyncHandler(async (req, res) => {
     }
   }
 
+  // Trigger notification for new user creation - notify all users
+  try {
+    const Notification = require('../models/Notification.model');
+    const allUsers = await User.find({ status: 'active' });
+    const allUserIds = allUsers.map(u => u._id);
+
+    await Notification.createUserNotification(
+      'user_created',
+      user.fullName,
+      user._id,
+      req.user._id,
+      allUserIds
+    );
+
+    // Also notify user to complete profile if incomplete
+    if (!user.profileCompleted) {
+      await Notification.createUserNotification(
+        'profile_incomplete',
+        user.fullName,
+        user._id,
+        null,
+        [user._id]
+      );
+    }
+  } catch (notifError) {
+    console.error('Failed to trigger user creation notification:', notifError);
+  }
+
   // Return safe user data
   const safeUserData = user.getSafeData();
 
@@ -254,13 +282,36 @@ const updateUser = asyncHandler(async (req, res) => {
 
   // Build update object with only allowed fields
   const updates = {};
+  const previousValues = {};
   for (const field of allowedUpdates) {
     if (
       Object.prototype.hasOwnProperty.call(req.body, field) &&
       req.body[field] !== undefined
     ) {
-      updates[field] = req.body[field];
+      // Store previous value if it's different
+      if (user[field] !== req.body[field]) {
+        previousValues[field] = user[field];
+        updates[field] = req.body[field];
+      }
     }
+  }
+
+  // Only proceed if there are actual changes
+  if (Object.keys(updates).length === 0) {
+    const safeUserData = user.getSafeData();
+    return ApiResponse.success(
+      res,
+      {
+        user: safeUserData,
+        profileCompletionStatus: {
+          isComplete: user.profileCompleted,
+          missingFields: user.profileCompleted
+            ? []
+            : getMissingProfileFields(user)
+        }
+      },
+      'No changes to update'
+    );
   }
 
   // Update user
@@ -270,6 +321,46 @@ const updateUser = asyncHandler(async (req, res) => {
   }).select(
     '-password -refreshToken -passwordResetToken -passwordResetExpires'
   );
+
+  // Create detailed notification for profile changes
+  if (Object.keys(previousValues).length > 0) {
+    try {
+      const Notification = require('../models/Notification.model');
+      const admins = await User.find({ role: 'admin', status: 'active' });
+      const adminIds = admins.map(admin => admin._id);
+
+      // Create detailed field changes
+      const changes = Object.entries(updates).map(([field, newValue]) => {
+        const oldValue = previousValues[field] || 'Not set';
+        const fieldMappings = {
+          fullName: 'Full Name',
+          phonePrimary: 'Primary Phone',
+          phoneSecondary: 'Secondary Phone',
+          address: 'Address',
+          emergencyContact: 'Emergency Contact',
+          role: 'Role',
+          status: 'Status'
+        };
+        const fieldLabel = fieldMappings[field] || field;
+        return {
+          field: fieldLabel,
+          oldValue: oldValue,
+          newValue: newValue
+        };
+      });
+
+      await Notification.createUserNotificationWithDetails(
+        'user_updated',
+        updatedUser.fullName,
+        updatedUser._id,
+        req.user._id,
+        adminIds,
+        changes
+      );
+    } catch (notifError) {
+      console.error('Failed to create user update notification:', notifError);
+    }
+  }
 
   if (!updatedUser) {
     return ApiResponse.notFound(res, 'User not found');
@@ -321,13 +412,36 @@ const updateProfile = asyncHandler(async (req, res) => {
 
   // Build update object with only allowed fields
   const updates = {};
+  const previousValues = {};
   for (const field of allowedUpdates) {
     if (
       Object.prototype.hasOwnProperty.call(req.body, field) &&
       req.body[field] !== undefined
     ) {
-      updates[field] = req.body[field];
+      // Store previous value if it's different
+      if (user[field] !== req.body[field]) {
+        previousValues[field] = user[field];
+        updates[field] = req.body[field];
+      }
     }
+  }
+
+  // Only proceed if there are actual changes
+  if (Object.keys(updates).length === 0) {
+    const safeUserData = user.getSafeData();
+    return ApiResponse.success(
+      res,
+      {
+        user: safeUserData,
+        profileCompletionStatus: {
+          isComplete: user.profileCompleted,
+          missingFields: user.profileCompleted
+            ? []
+            : getMissingProfileFields(user)
+        }
+      },
+      'No changes to update'
+    );
   }
 
   // Update user profile
@@ -337,6 +451,47 @@ const updateProfile = asyncHandler(async (req, res) => {
   }).select(
     '-password -refreshToken -passwordResetToken -passwordResetExpires'
   );
+
+  // Create detailed notification for profile changes
+  if (Object.keys(previousValues).length > 0) {
+    try {
+      const Notification = require('../models/Notification.model');
+      const admins = await User.find({ role: 'admin', status: 'active' });
+      const adminIds = admins.map(admin => admin._id);
+
+      // Create detailed field changes
+      const changes = Object.entries(updates).map(([field, newValue]) => {
+        const oldValue = previousValues[field] || 'Not set';
+        const fieldMappings = {
+          fullName: 'Full Name',
+          phonePrimary: 'Primary Phone',
+          phoneSecondary: 'Secondary Phone',
+          address: 'Address',
+          emergencyContact: 'Emergency Contact'
+        };
+        const fieldLabel = fieldMappings[field] || field;
+        return {
+          field: fieldLabel,
+          oldValue: oldValue,
+          newValue: newValue
+        };
+      });
+
+      await Notification.createUserNotificationWithDetails(
+        'user_updated',
+        updatedUser.fullName,
+        updatedUser._id,
+        req.user._id,
+        adminIds,
+        changes
+      );
+    } catch (notifError) {
+      console.error(
+        'Failed to create user profile update notification:',
+        notifError
+      );
+    }
+  }
 
   const safeUserData = updatedUser.getSafeData();
 
@@ -374,8 +529,26 @@ const deleteUser = asyncHandler(async (req, res) => {
 
   // Soft delete - change status to suspended instead of actual deletion
   // This preserves data integrity for documents created by this user
+  const userName = user.fullName;
   user.status = 'suspended';
   await user.save();
+
+  // Trigger suspension notification to all users
+  try {
+    const Notification = require('../models/Notification.model');
+    const allUsers = await User.find({ status: 'active' });
+    const allUserIds = allUsers.map(u => u._id);
+
+    await Notification.createUserSuspensionNotification(
+      'user_suspended',
+      userName,
+      id,
+      req.user._id,
+      allUserIds
+    );
+  } catch (notifError) {
+    console.error('Failed to trigger suspension notification:', notifError);
+  }
 
   ApiResponse.success(res, {}, 'User suspended successfully');
 });
@@ -397,10 +570,103 @@ const deleteUserPermanently = asyncHandler(async (req, res) => {
     return ApiResponse.error(res, 'You cannot delete your own account', 400);
   }
 
+  // Store user name before deletion
+  const userName = user.fullName;
+
   // Permanent deletion - actually remove the user from database
   await User.findByIdAndDelete(id);
 
+  // Trigger deletion notification to all users
+  try {
+    const Notification = require('../models/Notification.model');
+    const allUsers = await User.find({ status: 'active' });
+    const allUserIds = allUsers.map(u => u._id);
+
+    await Notification.createUserSuspensionNotification(
+      'user_deleted',
+      userName,
+      id,
+      req.user._id,
+      allUserIds
+    );
+  } catch (notifError) {
+    console.error('Failed to trigger deletion notification:', notifError);
+  }
+
   ApiResponse.success(res, {}, 'User permanently deleted successfully');
+});
+
+/**
+ * Bulk permanently delete users (Admin only)
+ * DELETE /api/users/bulk-delete
+ */
+const bulkDeleteUsersPermanently = asyncHandler(async (req, res) => {
+  const { userIds } = req.body;
+
+  if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+    return ApiResponse.error(
+      res,
+      'User IDs are required and must be an array',
+      400
+    );
+  }
+
+  // Filter out current user to prevent self-deletion
+  const currentUserId = req.user._id.toString();
+  const filteredUserIds = userIds.filter(id => id.toString() !== currentUserId);
+
+  if (filteredUserIds.length === 0) {
+    return ApiResponse.error(res, 'No valid users to delete', 400);
+  }
+
+  // Find users to verify they exist and get their names
+  const users = await User.find({ _id: { $in: filteredUserIds } });
+
+  if (users.length === 0) {
+    return ApiResponse.error(res, 'No users found with the provided IDs', 404);
+  }
+
+  // Store user information before deletion
+  const userInfo = users.map(u => ({ id: u._id, name: u.fullName }));
+
+  // Permanently delete all users
+  const deleteResult = await User.deleteMany({ _id: { $in: filteredUserIds } });
+
+  // Trigger deletion notifications for each user
+  if (deleteResult.deletedCount > 0) {
+    try {
+      const Notification = require('../models/Notification.model');
+      const allUsers = await User.find({ status: 'active' });
+      const allUserIds = allUsers.map(u => u._id);
+
+      // Create notifications for each deleted user
+      for (const user of userInfo) {
+        await Notification.createUserSuspensionNotification(
+          'user_deleted',
+          user.name,
+          user.id,
+          req.user._id,
+          allUserIds
+        );
+      }
+    } catch (notifError) {
+      console.error(
+        'Failed to trigger bulk deletion notifications:',
+        notifError
+      );
+    }
+  }
+
+  ApiResponse.success(
+    res,
+    {
+      deletedCount: deleteResult.deletedCount,
+      requestedCount: userIds.length,
+      foundCount: users.length,
+      skippedCurrentUser: userIds.length !== filteredUserIds.length
+    },
+    `Successfully deleted ${deleteResult.deletedCount} user(s) permanently`
+  );
 });
 
 /**
@@ -438,6 +704,33 @@ const bulkSuspendUsers = asyncHandler(async (req, res) => {
     { _id: { $in: filteredUserIds } },
     { status: 'suspended' }
   );
+
+  // Trigger suspension notifications for each user
+  if (updateResult.modifiedCount > 0) {
+    try {
+      const Notification = require('../models/Notification.model');
+      const allUsers = await User.find({ status: 'active' });
+      const allUserIds = allUsers.map(u => u._id);
+
+      // Create notifications for each suspended user
+      for (const user of users) {
+        if (filteredUserIds.includes(user._id.toString())) {
+          await Notification.createUserSuspensionNotification(
+            'user_suspended',
+            user.fullName,
+            user._id,
+            req.user._id,
+            allUserIds
+          );
+        }
+      }
+    } catch (notifError) {
+      console.error(
+        'Failed to trigger bulk suspension notifications:',
+        notifError
+      );
+    }
+  }
 
   ApiResponse.success(
     res,
@@ -487,6 +780,33 @@ const bulkReactivateUsers = asyncHandler(async (req, res) => {
     { status: 'active' }
   );
 
+  // Trigger reactivation notifications for each user
+  if (updateResult.modifiedCount > 0) {
+    try {
+      const Notification = require('../models/Notification.model');
+      const allUsers = await User.find({ status: 'active' });
+      const allUserIds = allUsers.map(u => u._id);
+
+      // Create notifications for each reactivated user
+      for (const user of users) {
+        if (filteredUserIds.includes(user._id.toString())) {
+          await Notification.createUserSuspensionNotification(
+            'user_reactivated',
+            user.fullName,
+            user._id,
+            req.user._id,
+            allUserIds
+          );
+        }
+      }
+    } catch (notifError) {
+      console.error(
+        'Failed to trigger bulk reactivation notifications:',
+        notifError
+      );
+    }
+  }
+
   ApiResponse.success(
     res,
     {
@@ -516,8 +836,26 @@ const reactivateUser = asyncHandler(async (req, res) => {
   }
 
   // Reactivate user
+  const userName = user.fullName;
   user.status = 'active';
   await user.save();
+
+  // Trigger reactivation notification to all users
+  try {
+    const Notification = require('../models/Notification.model');
+    const allUsers = await User.find({ status: 'active' });
+    const allUserIds = allUsers.map(u => u._id);
+
+    await Notification.createUserSuspensionNotification(
+      'user_reactivated',
+      userName,
+      id,
+      req.user._id,
+      allUserIds
+    );
+  } catch (notifError) {
+    console.error('Failed to trigger reactivation notification:', notifError);
+  }
 
   const safeUserData = user.getSafeData();
 
@@ -719,9 +1057,101 @@ const getUserStatistics = asyncHandler(async (req, res) => {
  * POST /api/users/upload-avatar
  */
 const uploadAvatar = asyncHandler(async (req, res) => {
-  // TODO: Implement file upload using Cloudinary
-  // This will be implemented when file upload system is created
-  ApiResponse.error(res, 'Avatar upload not yet implemented', 501);
+  const userId = req.user._id;
+
+  if (!req.file) {
+    return ApiResponse.error(res, 'No avatar file provided', 400);
+  }
+
+  try {
+    const uploadService = require('../services/upload.service');
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return ApiResponse.notFound(res, 'User not found');
+    }
+
+    // Delete previous avatar if it exists and is not the default
+    if (user.profilePhoto?.publicId && user.profilePhoto.publicId !== 'default_wiyefz') {
+      try {
+        await uploadService.deleteFile(user.profilePhoto.publicId);
+      } catch (deleteError) {
+        console.warn('Failed to delete previous avatar:', deleteError.message);
+      }
+    }
+
+    // Generate unique filename for user avatar
+    const filename = `avatar_${userId}_${Date.now()}`;
+
+    // Upload new avatar to Cloudinary
+    const uploadResult = await uploadService.uploadFile(
+      req.file.buffer,
+      filename,
+      'avatars',
+      {
+        width: 400,
+        height: 400,
+        crop: 'fill',
+        gravity: 'face',
+        quality: 'auto',
+        format: 'webp'
+      }
+    );
+
+    // Update user profile photo data
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      {
+        profilePhoto: {
+          publicId: uploadResult.publicId,
+          url: uploadResult.url,
+          originalName: req.file.originalname,
+          uploadedAt: new Date()
+        }
+      },
+      { new: true, runValidators: true }
+    ).select('-password -refreshToken -passwordResetToken -passwordResetExpires');
+
+    if (!updatedUser) {
+      return ApiResponse.notFound(res, 'User not found');
+    }
+
+    // Create notification for avatar update
+    try {
+      const Notification = require('../models/Notification.model');
+      const admins = await User.find({ role: 'admin', status: 'active' });
+      const adminIds = admins.map(admin => admin._id);
+
+      await Notification.createUserNotification(
+        'user_updated',
+        updatedUser.fullName,
+        updatedUser._id,
+        req.user._id,
+        adminIds
+      );
+    } catch (notifError) {
+      console.error('Failed to create avatar update notification:', notifError);
+    }
+
+    const safeUserData = updatedUser.getSafeData();
+
+    ApiResponse.success(
+      res,
+      {
+        user: safeUserData,
+        profilePhoto: {
+          publicId: uploadResult.publicId,
+          url: uploadResult.url,
+          originalName: req.file.originalname,
+          uploadedAt: new Date()
+        }
+      },
+      'Avatar uploaded successfully'
+    );
+  } catch (error) {
+    console.error('Avatar upload error:', error);
+    ApiResponse.error(res, 'Failed to upload avatar', 500);
+  }
 });
 
 // Utility Functions
@@ -760,6 +1190,7 @@ module.exports = {
   updateProfile,
   deleteUser,
   deleteUserPermanently,
+  bulkDeleteUsersPermanently,
   bulkSuspendUsers,
   bulkReactivateUsers,
   reactivateUser,

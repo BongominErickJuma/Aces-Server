@@ -63,6 +63,37 @@ const uploadProfilePhoto = (req, res, next) => {
 };
 
 /**
+ * Avatar upload middleware (alias for profile photo with 'avatar' field name)
+ */
+const uploadAvatar = (req, res, next) => {
+  const upload = uploadService.getProfileUpload().single('avatar');
+
+  upload(req, res, error => {
+    if (error) {
+      return handleMulterError(error, req, res, next);
+    }
+
+    if (!req.file) {
+      return ApiResponse.error(res, 'No avatar file provided', 400);
+    }
+
+    // Validate file
+    const validationErrors = uploadService.validateFile(
+      req.file,
+      'profilePhoto'
+    );
+    if (validationErrors.length > 0) {
+      return ApiResponse.validationError(
+        res,
+        validationErrors.map(msg => ({ msg }))
+      );
+    }
+
+    next();
+  });
+};
+
+/**
  * Company logo upload middleware
  */
 const uploadCompanyLogo = (req, res, next) => {
@@ -288,6 +319,7 @@ const processUploadResult = (req, res, next) => {
 
 module.exports = {
   uploadProfilePhoto,
+  uploadAvatar,
   uploadCompanyLogo,
   uploadCompanyStamp,
   uploadDocument,

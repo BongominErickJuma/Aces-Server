@@ -10,6 +10,7 @@ const rateLimit = require('express-rate-limit');
 // Import controllers and middleware
 const userController = require('../controllers/user.controller');
 const { authenticate, requireAdmin } = require('../middleware/auth.middleware');
+const { uploadAvatar } = require('../middleware/upload.middleware');
 const {
   validateCreateUser,
   validateUpdateUser,
@@ -104,6 +105,7 @@ router.post(
   '/upload-avatar',
   authenticate,
   userOperationRateLimit,
+  uploadAvatar,
   userController.uploadAvatar
 );
 
@@ -193,6 +195,18 @@ router.post(
   requireAdmin,
   userOperationRateLimit,
   userController.bulkReactivateUsers
+);
+
+/**
+ * DELETE /api/users/bulk-delete
+ * Bulk permanently delete users (Admin only)
+ */
+router.delete(
+  '/bulk-delete',
+  authenticate,
+  requireAdmin,
+  userOperationRateLimit,
+  userController.bulkDeleteUsersPermanently
 );
 
 /**
