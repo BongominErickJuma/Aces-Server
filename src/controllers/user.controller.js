@@ -17,7 +17,7 @@ const emailService = require('../services/email.service');
 const getAllUsers = asyncHandler(async (req, res) => {
   const {
     page = 1,
-    limit = 20,
+    limit = 10,
     search = '',
     role = '',
     status = '',

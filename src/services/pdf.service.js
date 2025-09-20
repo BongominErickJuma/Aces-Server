@@ -259,15 +259,20 @@ class PDFService {
     const servicesRows = quotation.services
       .map(
         (service, index) => `
-      <tr>
+      <tr class="${index % 2 === 0 ? 'row-white' : 'row-gray'}">
         <td class="service-number">${index + 1}</td>
         <td class="service-name">${service.name}</td>
         <td class="service-description">${service.description}</td>
-        <td class="service-amount">${this.formatCurrency(service.total, quotation.pricing.currency)}</td>
+        <td class="service-amount">${this.formatCurrency(service.total, quotation.pricing.currency).replace('UGX ', '').replace(/,/g, ',') + ' UGX'}</td>
       </tr>
     `
       )
       .join('');
+
+    // Format grand total to match sample
+    const grandTotal = this.formatCurrency(quotation.pricing.totalAmount, quotation.pricing.currency)
+      .replace('UGX ', '')
+      .replace(/,/g, ',') + ' UGX';
 
     return `
       <!DOCTYPE html>
@@ -282,53 +287,54 @@ class PDFService {
       </head>
       <body>
         <div class="page-container">
-          <!-- Header Section -->
-          <div class="header-section">
-            <!-- Top Row: Logo/Company Name vs QUOTATION word -->
-            <div class="top-row">
-              <div class="logo-company-section">
-                ${await this.generateCompanyLogoForQuotation()}
-                <h2 class="company-name">Aces Movers and Relocation Company Limited</h2>
-              </div>
-              <div class="quotation-header">QUOTATION</div>
+          <!-- Header Top Section -->
+          <div class="header-top">
+            <div class="header-left-top">
+              ${await this.generateCompanyLogoForQuotation()}
+              <div class="company-name">Aces Movers and Relocation Company Limited</div>
             </div>
+            <div class="header-right-top">
+              <div class="quotation-title">QUOTATION</div>
+            </div>
+          </div>
 
-            <!-- Bottom Row: Contact Info vs Quotation Box -->
-            <div class="bottom-row">
-              <div class="contact-info">
-                <p class="company-address">Kigowa2 Kulambiro Kisasi Ring Road 83AD</p>
-                <p class="company-location">Kampala, Uganda.</p>
-                <p class="company-email">info@acesmovers.com</p>
-                <p class="company-phone">+256 778 259191</p>
-                <p class="company-phone">+256 725 711730</p>
-                <p class="company-website">acesmovers.com</p>
+          <!-- Header Bottom Section -->
+          <div class="header-bottom">
+            <div class="company-info">
+              <p>Kigowa2 Kulambiro Kisasi Ring Road 83AD</p>
+              <p>Kampala, Uganda.</p>
+              <p class="email">info@acesmovers.com</p>
+              <p class="phone">+256 778 259191</p>
+              <p class="phone">+256 725 711730</p>
+              <p class="website">acesmovers.com</p>
+            </div>
+            <div class="quotation-box">
+              <div class="info-row">
+                <span class="label">Quotation No:</span>
+                <span class="value">${quotation.quotationNumber}</span>
               </div>
-
-              <div class="quotation-details-box">
-                <table class="quotation-info">
-                  <tr><td class="label">Quotation No:</td><td class="value">${quotation.quotationNumber}</td></tr>
-                  <tr><td class="label">Date:</td><td class="value">${createdDate}</td></tr>
-                  <tr><td class="label">Service Type:</td><td class="value">${quotation.type.charAt(0).toUpperCase() + quotation.type.slice(1)} Move</td></tr>
-                </table>
+              <div class="info-row">
+                <span class="label">Date:</span>
+                <span class="value">${createdDate}</span>
+              </div>
+              <div class="info-row">
+                <span class="label">Service Type:</span>
+                <span class="value">${quotation.type.charAt(0).toUpperCase() + quotation.type.slice(1)} Move</span>
               </div>
             </div>
           </div>
 
           <!-- Client Info Section -->
           <div class="client-section">
-            <h3 class="section-title">Client's Info</h3>
-            <div class="client-details">
-              <div class="client-column-1">
-                ${quotation.client.company ? `<div class="client-info-row"><span class="client-label">Company Name:</span><span class="client-value">${quotation.client.company}</span></div>` : ''}
-                <div class="client-info-row"><span class="client-label">Contact Person:</span><span class="client-value">${quotation.client.name}</span></div>
-                <div class="client-info-row"><span class="client-label">Contact:</span><span class="client-value">${quotation.client.phone}</span></div>
-                ${quotation.client.email ? `<div class="client-info-row"><span class="client-label">Email:</span><span class="client-value">${quotation.client.email}</span></div>` : ''}
-              </div>
-              <div class="client-column-2">
-                <div class="client-info-row"><span class="client-label">From:</span><span class="client-value">${quotation.locations.from}</span></div>
-                <div class="client-info-row"><span class="client-label">To:</span><span class="client-value">${quotation.locations.to}</span></div>
-                ${movingDate ? `<div class="client-info-row"><span class="client-label">Moving Date:</span><span class="client-value">${movingDate}</span></div>` : ''}
-              </div>
+            <div class="section-header">Client's Info</div>
+            <div class="client-info">
+              ${quotation.client.company ? `<div class="client-row"><span class="client-label">Company Name:</span> <span class="client-value">${quotation.client.company}</span></div>` : ''}
+              <div class="client-row"><span class="client-label">Contact Person:</span> <span class="client-value">${quotation.client.name}</span></div>
+              <div class="client-row"><span class="client-label">Contact:</span> <span class="client-value">${quotation.client.phone}</span></div>
+              <div class="client-row"><span class="client-label">Email:</span> <span class="client-value">${quotation.client.email || ''}</span></div>
+              <div class="client-row"><span class="client-label">From:</span> <span class="client-value">${quotation.locations.from}</span></div>
+              <div class="client-row"><span class="client-label">To:</span> <span class="client-value">${quotation.locations.to}</span></div>
+              ${movingDate ? `<div class="client-row"><span class="client-label">Moving Date:</span> <span class="client-value">${movingDate}</span></div>` : ''}
             </div>
           </div>
 
@@ -336,7 +342,7 @@ class PDFService {
           <div class="services-section">
             <table class="services-table">
               <thead>
-                <tr class="services-header">
+                <tr>
                   <th class="col-number"></th>
                   <th class="col-service">Services</th>
                   <th class="col-description">Description</th>
@@ -347,46 +353,40 @@ class PDFService {
                 ${servicesRows}
               </tbody>
             </table>
-
-            <div class="grand-total">
-              <span class="grand-total-label">Grand Total</span>
-              <span class="grand-total-amount">${this.formatCurrency(quotation.pricing.totalAmount, quotation.pricing.currency)}</span>
+            <div class="total-row">
+              <span class="total-label">Grand Total</span>
+              <span class="total-amount">${grandTotal}</span>
             </div>
           </div>
 
-          <!-- Payment Section -->
+          <!-- Payment Details Section -->
           <div class="payment-section">
-            <div class="bank-details">
-              <h3 class="payment-title">Bank Details</h3>
-              <div class="payment-row"><span class="payment-label">Account Number:</span><span class="payment-value">${this.paymentInfo.bankAccountNumber}</span></div>
-              <div class="payment-row"><span class="payment-label">Account Name:</span><span class="payment-value">${this.paymentInfo.bankAccountName}</span></div>
-              <div class="payment-row"><span class="payment-label">Bank Name:</span><span class="payment-value">${this.paymentInfo.bankName}</span></div>
-              <div class="payment-row"><span class="payment-label">Swift Code:</span><span class="payment-value">${this.paymentInfo.bankSwiftCode}</span></div>
-              <div class="payment-row"><span class="payment-label">Sort Code:</span><span class="payment-value">${this.paymentInfo.bankSortCode}</span></div>
+            <div class="bank-section">
+              <div class="payment-header mobile-header">Bank Details</div>
+              <div class="payment-row"><span class="pay-label">Account Number:</span> <span>${this.paymentInfo.bankAccountNumber}</span></div>
+              <div class="payment-row"><span class="pay-label">Account Name:</span> <span>${this.paymentInfo.bankAccountName}</span></div>
+              <div class="payment-row"><span class="pay-label">Bank Name:</span> <span>${this.paymentInfo.bankName}</span></div>
+              <div class="payment-row"><span class="pay-label">Swift Code:</span> <span>${this.paymentInfo.bankSwiftCode}</span></div>
+              <div class="payment-row"><span class="pay-label">Sort Code:</span> <span>${this.paymentInfo.bankSortCode}</span></div>
             </div>
-
-            <div class="mobile-money">
-              <h3 class="payment-title">MOBILE MONEY</h3>
-              <div class="payment-row"><span class="payment-label">Account Name:</span><span class="payment-value">${this.paymentInfo.mobileMoneyAccountName}</span></div>
-              <div class="payment-row"><span class="payment-label"></span><span class="payment-value">${this.paymentInfo.mobileMoneyMTN}</span></div>
-              <div class="payment-row"><span class="payment-label"></span><span class="payment-value">${this.paymentInfo.mobileMoneyAirtel}</span></div>
+            <div class="mobile-section">
+              <div class="payment-header mobile-header">MOBILE MONEY</div>
+              <div class="payment-row">KAMOGA GEOFREY</div>
+              <div class="payment-row">${this.paymentInfo.mobileMoneyMTN}</div>
+              <div class="payment-row">${this.paymentInfo.mobileMoneyAirtel}</div>
             </div>
           </div>
 
           <!-- Note Section -->
+          ${quotation.notes ? `
           <div class="note-section">
-            <h3 class="note-title">NOTE:</h3>
-            <p class="note-text">30% down payment should be provided to Aces Movers and Relocation Company before the move.</p>
-            ${quotation.notes ? `<p class="note-text">${quotation.notes}</p>` : ''}
-          </div>
+            <div class="note-header">NOTE:</div>
+            <div class="note-text">${quotation.notes}</div>
+          </div>` : ''}
 
           <!-- Footer Section -->
           <div class="footer-section">
-            <p class="footer-contact">${this.companyInfo.email}</p>
-            <p class="footer-contact">${this.companyInfo.phone}</p>
-            <p class="footer-contact">${this.companyInfo.website}</p>
-            <p class="footer-contact">${this.companyInfo.phoneSecondary}</p>
-            <p class="footer-message">Thank you for the support. We look forward to working with you in the future.</p>
+            <div class="footer-message">Thank you for the support. We look forward to working with you in the future.</div>
           </div>
         </div>
       </body>
@@ -403,47 +403,22 @@ class PDFService {
       ? this.formatDate(receipt.locations.movingDate)
       : null;
 
-    // Generate services table - different format for commitment receipts
-    const isCommitmentReceipt = receipt.receiptType === 'commitment';
-    const servicesRows = receipt.services
-      .map(service => {
-        if (isCommitmentReceipt) {
-          // Commitment receipt without quantity column
-          return `
-      <tr>
-        <td>${service.description}</td>
-        <td class="text-right">${this.formatCurrency(service.amount, receipt.payment.currency)}</td>
-        <td class="text-right">${this.formatCurrency(service.total, receipt.payment.currency)}</td>
-      </tr>
-    `;
-        } else {
-          // Regular receipt with quantity column
-          return `
-      <tr>
-        <td>${service.description}</td>
-        <td class="text-center">${service.quantity || 1}</td>
-        <td class="text-right">${this.formatCurrency(service.amount, receipt.payment.currency)}</td>
-        <td class="text-right">${this.formatCurrency(service.total, receipt.payment.currency)}</td>
-      </tr>
-    `;
-        }
-      })
-      .join('');
+    // Get the last payment from payment history to get receivedBy info
+    const lastPayment = receipt.payment.paymentHistory?.[receipt.payment.paymentHistory.length - 1];
+    const receivedBy = lastPayment?.receivedBy?.fullName || 'Kamoga Geofrey';
+    const paymentMode = lastPayment?.method?.replace('_', ' ') || 'Mobile Money';
 
-    // Generate payment history if exists
-    const paymentHistoryRows =
-      receipt.payment.paymentHistory
-        ?.map(
-          payment => `
-      <tr>
-        <td>${this.formatDate(payment.date)}</td>
-        <td>${payment.method.replace('_', ' ').toUpperCase()}</td>
-        <td class="text-right">${this.formatCurrency(payment.amount, receipt.payment.currency)}</td>
-        <td>${payment.receivedBy?.fullName || '-'}</td>
-      </tr>
-    `
-        )
-        .join('') || '';
+    // Format currency without the currency prefix for UGX amounts
+    const formatUGX = (amount) => {
+      const formatted = this.formatCurrency(amount, receipt.payment.currency || 'UGX');
+      return formatted.replace(/UGX\s*/, 'UGX ');
+    };
+
+    // Generate signature HTML
+    const signatureHTML = receipt.createdBy?.signature?.data
+      ? `<img src="${receipt.createdBy.signature.data}" alt="Signature" style="max-width: 100px; max-height: 40px;" />`
+      : '<div style="width: 100px; height: 40px; background: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==); background-size: contain; background-repeat: no-repeat;"></div>';
+
 
     return `
       <!DOCTYPE html>
@@ -500,142 +475,83 @@ class PDFService {
             : ''
         }
 
-        ${
-          receipt.receiptType === 'box'
-            ? `
-        <div class="services-section">
-          <h3>Services Provided</h3>
-          <table class="services-table">
-            <thead>
-              <tr>
-                <th>Description</th>
-                <th>Qty</th>
-                <th>Amount</th>
-                <th>Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${servicesRows}
-            </tbody>
-          </table>
-        </div>`
-            : ''
-        }
-
-        ${
-          receipt.receiptType !== 'box'
-            ? `
-        <div class="payment-section">
-          <div class="payment-summary">
-            <h3>Payment Summary</h3>
-            <table class="services-table">
+          <!-- Payment/Services Table Section -->
+          <div class="payment-table-section">
+            <table class="payment-table">
               <thead>
                 <tr>
-                  <th>Description</th>
-                  <th>Amount</th>
+                  <th class="description-col">Description</th>
+                  <th class="amount-col">Amount</th>
                 </tr>
               </thead>
               <tbody>
                 ${
-                  receipt.receiptType === 'commitment'
-                    ? `
+                  receipt.receiptType === 'box'
+                    ? (receipt.services && receipt.services.length > 0
+                        ? receipt.services.map(service => `
                 <tr>
-                  <td><strong>Commitment Fee Paid</strong></td>
-                  <td class="text-right">${this.formatCurrency(receipt.commitmentFeePaid || 0, receipt.payment.currency)}</td>
-                </tr>
-                <tr>
-                  <td><strong>Total Amount For Moving</strong></td>
-                  <td class="text-right">${this.formatCurrency(receipt.totalMovingAmount || 0, receipt.payment.currency)}</td>
-                </tr>
-                <tr class="balance-row">
-                  <td><strong>Balance Due</strong></td>
-                  <td class="text-right"><strong>${this.formatCurrency((receipt.totalMovingAmount || 0) - (receipt.commitmentFeePaid || 0), receipt.payment.currency)}</strong></td>
-                </tr>`
-                    : receipt.receiptType === 'final'
+                  <td>${service.description || service.name || 'Service'}</td>
+                  <td class="amount-cell">${formatUGX(service.total || service.amount || 0)}</td>
+                </tr>`).join('')
+                        : `<tr><td>No services listed</td><td class="amount-cell">${formatUGX(0)}</td></tr>`)
+                    : receipt.receiptType === 'commitment'
                       ? `
                 <tr>
-                  <td><strong>Commitment Fee Paid (Previously)</strong></td>
-                  <td class="text-right">${this.formatCurrency(receipt.commitmentFeePaid || 0, receipt.payment.currency)}</td>
+                  <td>Commitment Fee Paid:</td>
+                  <td class="amount-cell commitment-paid">${formatUGX(receipt.commitmentFeePaid || 0)}</td>
                 </tr>
                 <tr>
-                  <td><strong>Final Payment Received</strong></td>
-                  <td class="text-right">${this.formatCurrency(receipt.finalPaymentReceived || 0, receipt.payment.currency)}</td>
+                  <td>Total Amount For Moving:</td>
+                  <td class="amount-cell">${formatUGX(receipt.totalMovingAmount || 0)}</td>
                 </tr>
-                <tr class="balance-row">
-                  <td><strong>Grand Total</strong></td>
-                  <td class="text-right"><strong>${this.formatCurrency((receipt.commitmentFeePaid || 0) + (receipt.finalPaymentReceived || 0), receipt.payment.currency)}</strong></td>
+                <tr>
+                  <td>Balance Due:</td>
+                  <td class="amount-cell">${formatUGX((receipt.totalMovingAmount || 0) - (receipt.commitmentFeePaid || 0))}</td>
                 </tr>`
-                      : receipt.receiptType === 'one_time'
+                      : receipt.receiptType === 'final'
                         ? `
-                <tr class="balance-row">
-                  <td><strong>Total Amount For Moving</strong></td>
-                  <td class="text-right"><strong>${this.formatCurrency(receipt.totalMovingAmount || 0, receipt.payment.currency)}</strong></td>
+                <tr>
+                  <td>Commitment Fee Paid (Previously):</td>
+                  <td class="amount-cell">${formatUGX(receipt.commitmentFeePaid || 0)}</td>
+                </tr>
+                <tr>
+                  <td>Final Payment Received:</td>
+                  <td class="amount-cell">${formatUGX(receipt.finalPaymentReceived || 0)}</td>
+                </tr>
+                <tr>
+                  <td>Grand Total:</td>
+                  <td class="amount-cell">${formatUGX((receipt.commitmentFeePaid || 0) + (receipt.finalPaymentReceived || 0))}</td>
                 </tr>`
-                        : ''
+                        : receipt.receiptType === 'one_time'
+                          ? `
+                <tr>
+                  <td>Total Cost For Moving:</td>
+                  <td class="amount-cell">${formatUGX(receipt.totalMovingAmount || 0)}</td>
+                </tr>`
+                          : ''
                 }
               </tbody>
             </table>
+            ${receipt.receiptType === 'box' ? `
+            <div class="total-row">
+              <span class="total-label">Total:</span>
+              <span class="total-amount">${formatUGX(receipt.payment.totalAmount || 0)}</span>
+            </div>` : ''}
           </div>
-        </div>`
-            : receipt.payment.paymentHistory?.length > 0
-              ? `
-        <div class="payment-section">
-          <div class="payment-history">
-            <h3>Payment History</h3>
-            <table class="services-table">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Method</th>
-                  <th>Amount</th>
-                  <th>Received By</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${paymentHistoryRows}
-              </tbody>
-            </table>
-          </div>
-        </div>`
-              : ''
-        }
 
-        ${
-          receipt.commitmentFee?.amount
-            ? `
-        <div class="commitment-section">
-          <h3>Commitment Fee Details</h3>
-          <table class="info-table">
-            <tr><td><strong>Commitment Fee:</strong></td><td>${this.formatCurrency(receipt.commitmentFee.amount, receipt.payment.currency)}</td></tr>
-            ${receipt.commitmentFee.paidDate ? `<tr><td><strong>Paid Date:</strong></td><td>${this.formatDate(receipt.commitmentFee.paidDate)}</td></tr>` : ''}
-          </table>
-        </div>`
-            : ''
-        }
-
-        <div class="signature-section">
-          <div class="signature-block-single">
-            <p><strong>Prepared by:</strong> ${receipt.createdBy?.fullName || 'Authorized Representative'}</p>
-            <div class="signature-line-container">
-              <p><strong>Signature:</strong></p>
-              ${
-                receipt.createdBy?.signature?.data
-                  ? `<div class="signature-image-container">
-                  ${
-                    receipt.createdBy.signature.type === 'canvas'
-                      ? `<img src="${receipt.createdBy.signature.data}" alt="Signature" class="signature-img" />`
-                      : `<img src="${receipt.createdBy.signature.data}" alt="Signature" class="signature-img" />`
-                  }
-                </div>`
-                  : '<div class="signature-placeholder">_____________________</div>'
-              }
+          <!-- Footer Section -->
+          <div class="footer-info">
+            <div class="payment-info">
+              <div class="payment-row"><span class="payment-label">Payment Mode:</span> <span class="payment-value">${paymentMode}</span></div>
+              <div class="payment-row"><span class="payment-label">Received By:</span> <span class="payment-value">${receivedBy}</span></div>
+              <div class="payment-row"><span class="payment-label">Signature:</span> <span class="payment-value">${signatureHTML}</span></div>
             </div>
-            <p><strong>Date:</strong> ${createdDate}</p>
           </div>
-        </div>
 
-        <div class="footer">
-          <p><em>Thank you for choosing ${this.companyInfo.name}.</em></p>
+          <!-- Thank You Message -->
+          <div class="thank-you">
+            Thank you for the support. We look forward to working with you in the future.
+          </div>
         </div>
       </body>
       </html>
@@ -656,156 +572,137 @@ class PDFService {
       body {
         font-family: Arial, sans-serif;
         font-size: 10px;
-        line-height: 1.2;
+        line-height: 1.4;
         color: #000;
         background: white;
       }
 
       .page-container {
-        max-width: 800px;
+        width: 100%;
+        max-width: 210mm;
         margin: 0 auto;
-        padding: 5px 20px 5px 20px;
+        padding: 15mm 20mm;
       }
 
-      /* Header Section */
-      .header-section {
-        margin-bottom: 15px;
-        border-bottom: 3px solid #ccc;
-        padding-bottom: 10px;
-      }
-
-      /* Top Row: Logo/Company vs QUOTATION word */
-      .top-row {
+      /* Header Top Section */
+      .header-top {
         display: flex;
         justify-content: space-between;
         align-items: flex-start;
-        margin-bottom: 8px;
+        margin-bottom: 15px;
       }
 
-      .logo-company-section {
-        /* Left side */
+      .header-left-top {
+        flex: 1;
       }
 
       .company-logo {
-        margin-bottom: 4px;
+        margin-bottom: 5px;
       }
 
       .company-logo .logo-img {
-        height: 56px;
+        height: 45px;
         width: auto;
-        max-width: 175px;
       }
 
       .company-name {
         font-size: 11px;
-        font-weight: normal;
-        color: #2e8a56;
-        margin: 0;
-        line-height: 1.1;
+        color: #22C55E;  /* Green matching the logo */
+        margin-bottom: 15px;
+        font-weight: 600;
       }
 
-      .quotation-header {
-        font-size: 16px;
+      .quotation-title {
+        font-size: 20px;
         font-weight: bold;
-        color: #001BB7;
-        text-align: right;
+        color: #1e40af;
+        letter-spacing: 1px;
       }
 
-      /* Bottom Row: Contact Info vs Quotation Box */
-      .bottom-row {
+      /* Header Bottom Section */
+      .header-bottom {
         display: flex;
         justify-content: space-between;
         align-items: flex-start;
+        margin-bottom: 20px;
+        padding-bottom: 10px;
+        border-bottom: 2px solid #e5e7eb;
       }
 
-      .contact-info {
-        /* Left side */
-      }
-
-      .company-address,
-      .company-location,
-      .company-phone {
-        font-size: 10px;
+      .company-info {
+        font-size: 9px;
         color: #333;
-        margin: 1px 0;
-        line-height: 1.2;
+        line-height: 1.3;
       }
 
-      .company-email,
-      .company-website {
-        font-size: 10px;
+      .company-info p {
+        margin: 1px 0;
+      }
+
+      .company-info .email {
         color: #2563eb;
-        margin: 1px 0;
-        line-height: 1.2;
       }
 
-      .quotation-details-box {
-        border: 2px solid #9ca3af;
-        padding: 10px;
-        width: 200px;
+      .company-info .website {
+        color: #2563eb;
+      }
+
+      .quotation-box {
+        border: 1.5px solid #6b7280;
+        padding: 10px 15px;
+        min-width: 180px;
         background: white;
       }
 
-      .quotation-info {
-        width: 100%;
+      .info-row {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 3px;
         font-size: 9px;
+        gap: 15px;
       }
 
-      .quotation-info td {
-        padding: 2px 5px;
-        text-align: left;
-      }
-
-      .quotation-info .label {
-        font-weight: bold;
-        white-space: nowrap;
-        width: 80px;
-      }
-
-      .quotation-info .value {
+      .info-row .label {
         font-weight: normal;
+        white-space: nowrap;
+      }
+
+      .info-row .value {
+        font-weight: normal;
+        text-align: right;
       }
 
       /* Client Section */
       .client-section {
-        margin: 25px 0;
+        margin: 20px 0;
       }
 
-      .section-title {
+      .section-header {
         font-size: 11px;
-        font-weight: bold;
-        color: #333;
-        margin-bottom: 10px;
-        border-bottom: 1px solid #ddd;
+        font-weight: normal;
+        color: #111;
+        margin-bottom: 8px;
         padding-bottom: 3px;
+        border-bottom: 1px solid #e5e7eb;
       }
 
-      .client-details {
-        display: flex;
-        gap: 30px;
+      .client-info {
         font-size: 9px;
       }
 
-      .client-column-1,
-      .client-column-2 {
-        flex: 1;
-      }
-
-      .client-info-row {
+      .client-row {
         margin-bottom: 4px;
-        line-height: 1.3;
+        display: flex;
       }
 
       .client-label {
-        font-weight: bold;
-        color: #333;
-        display: inline;
-        margin-right: 5px;
+        font-weight: normal;
+        min-width: 100px;
+        margin-right: 15px;
       }
 
       .client-value {
-        color: #000;
-        display: inline;
+        flex: 1;
       }
 
       /* Services Section */
@@ -816,27 +713,28 @@ class PDFService {
       .services-table {
         width: 100%;
         border-collapse: collapse;
-        font-size: 9px;
-        margin-bottom: 15px;
+        margin-bottom: 0;
       }
 
-      .services-header th {
+      .services-table thead tr {
         background-color: #6b7280;
+      }
+
+      .services-table th {
         color: white;
-        padding: 8px 6px;
+        padding: 8px;
         text-align: left;
-        font-weight: bold;
-        border: 1px solid #6b7280;
-        font-size: 9px;
+        font-size: 10px;
+        font-weight: normal;
       }
 
       .col-number {
-        width: 30px;
+        width: 25px;
         text-align: center;
       }
 
       .col-service {
-        width: 80px;
+        width: 100px;
       }
 
       .col-description {
@@ -844,108 +742,106 @@ class PDFService {
       }
 
       .col-amount {
-        width: 100px;
+        width: 110px;
         text-align: right;
+        padding-right: 15px;
       }
 
       .services-table tbody td {
-        padding: 8px 6px;
-        border: 1px solid #d1d5db;
+        padding: 10px 8px;
         vertical-align: top;
         font-size: 9px;
       }
 
-      .services-table tbody tr:nth-child(even) {
-        background-color: #f9f9f9;
+      .row-white {
+        background-color: white;
+      }
+
+      .row-gray {
+        background-color: #f9fafb;
       }
 
       .service-number {
         text-align: center;
-        font-weight: bold;
       }
 
       .service-name {
-        font-weight: bold;
+        font-weight: normal;
       }
 
       .service-description {
-        line-height: 1.3;
+        line-height: 1.4;
+        font-size: 8px;
+        color: #374151;
       }
 
       .service-amount {
         text-align: right;
-        font-weight: bold;
+        padding-right: 15px;
       }
 
-      .grand-total {
+      .total-row {
         display: flex;
         justify-content: flex-end;
         align-items: center;
-        gap: 20px;
-        margin-top: 10px;
-        padding: 8px 0;
-        border-top: 2px solid #333;
+        gap: 50px;
+        padding: 12px 15px 12px 0;
+        border-bottom: 2px solid #e5e7eb;
+        margin-top: -1px;
       }
 
-      .grand-total-label {
+      .total-label {
         font-size: 11px;
-        font-weight: bold;
-        color: #333;
+        font-weight: normal;
       }
 
-      .grand-total-amount {
-        font-size: 14px;
-        color: #16a34a;
+      .total-amount {
+        font-size: 16px;
         font-weight: bold;
+        color: #22C55E;  /* Green matching logo */
       }
 
       /* Payment Section */
       .payment-section {
         display: flex;
-        gap: 50px;
+        gap: 80px;
         margin: 25px 0;
+        padding: 15px 0;
       }
 
-      .bank-details,
-      .mobile-money {
+      .bank-section,
+      .mobile-section {
         flex: 1;
       }
 
-      .payment-title {
+      .mobile-header {
         font-size: 10px;
-        font-weight: bold;
-        color: #16a34a;
+        font-weight: 600;
+        color: #22C55E;  /* Green for Bank Details and MOBILE MONEY */
         margin-bottom: 8px;
-        text-decoration: underline;
       }
 
       .payment-row {
+        font-size: 9px;
         margin-bottom: 3px;
-        font-size: 8px;
         line-height: 1.3;
       }
 
-      .payment-label {
-        font-weight: bold;
-        color: #333;
-        display: inline;
+      .pay-label {
+        font-weight: normal;
         margin-right: 5px;
-      }
-
-      .payment-value {
-        color: #000;
-        display: inline;
       }
 
       /* Note Section */
       .note-section {
         margin: 25px 0;
+        padding: 10px 0;
       }
 
-      .note-title {
+      .note-header {
         font-size: 11px;
         font-weight: bold;
-        color: #d97706;
+        color: #FF8C00;  /* Orange color for NOTE */
         margin-bottom: 5px;
       }
 
@@ -953,38 +849,296 @@ class PDFService {
         font-size: 9px;
         color: #333;
         line-height: 1.4;
-        margin-bottom: 5px;
       }
 
       /* Footer Section */
       .footer-section {
         text-align: center;
-        margin-top: 30px;
-        padding-top: 15px;
-        border-top: 1px solid #ccc;
-      }
-
-      .footer-contact {
-        font-size: 9px;
-        color: #333;
-        margin: 1px 0;
+        margin-top: 40px;
+        padding-top: 20px;
       }
 
       .footer-message {
         font-size: 10px;
-        color: #16a34a;
-        font-style: italic;
-        margin-top: 10px;
+        color: #22C55E;  /* Green matching logo */
+        font-style: normal;
+        text-align: center;
       }
 
       @page {
-        margin: 15mm;
+        size: A4;
+        margin: 0;
       }
 
       @media print {
+        body {
+          margin: 0;
+        }
         .page-container {
-          max-width: none;
-          padding: 0;
+          max-width: 100%;
+          padding: 15mm;
+        }
+      }
+    `;
+  }
+
+  /**
+   * Get receipt-specific CSS styles matching the sample design
+   */
+  getReceiptStyles() {
+    return `
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: Arial, sans-serif;
+        font-size: 10px;
+        line-height: 1.4;
+        color: #000;
+        background: white;
+      }
+
+      .page-container {
+        width: 100%;
+        max-width: 210mm;
+        margin: 0 auto;
+        padding: 15mm 20mm;
+      }
+
+      /* Header Top Section */
+      .header-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 15px;
+      }
+
+      .header-left-top {
+        flex: 1;
+      }
+
+      .company-logo {
+        margin-bottom: 5px;
+      }
+
+      .company-logo .logo-img {
+        height: 45px;
+        width: auto;
+      }
+
+      .company-name {
+        font-size: 11px;
+        color: #22C55E;
+        margin-bottom: 15px;
+        font-weight: 600;
+      }
+
+      .receipt-title {
+        font-size: 20px;
+        font-weight: bold;
+        color: #1e40af;
+        letter-spacing: 1px;
+      }
+
+      /* Header Bottom Section */
+      .header-bottom {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 20px;
+        padding-bottom: 10px;
+        border-bottom: 2px solid #e5e7eb;
+      }
+
+      .company-info {
+        font-size: 9px;
+        color: #333;
+        line-height: 1.3;
+      }
+
+      .company-info p {
+        margin: 1px 0;
+      }
+
+      .company-info .email {
+        color: #2563eb;
+      }
+
+      .company-info .website {
+        color: #2563eb;
+      }
+
+      .receipt-box {
+        border: 1.5px solid #6b7280;
+        padding: 10px 15px;
+        min-width: 180px;
+        background: white;
+      }
+
+      .info-row {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 3px;
+        font-size: 9px;
+        gap: 15px;
+      }
+
+      .info-row .label {
+        font-weight: normal;
+        white-space: nowrap;
+      }
+
+      .info-row .value {
+        font-weight: normal;
+        text-align: right;
+      }
+
+      /* Client Section */
+      .client-section {
+        margin: 20px 0;
+      }
+
+      .client-info {
+        font-size: 9px;
+      }
+
+      .client-row {
+        margin-bottom: 4px;
+        display: flex;
+      }
+
+      .client-label {
+        font-weight: normal;
+        min-width: 100px;
+        margin-right: 15px;
+      }
+
+      .client-value {
+        flex: 1;
+      }
+
+      /* Payment Table Section */
+      .payment-table-section {
+        margin: 25px 0;
+      }
+
+      .payment-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 0;
+      }
+
+      .payment-table thead tr {
+        background-color: #6b7280;
+      }
+
+      .payment-table th {
+        color: white;
+        padding: 8px;
+        text-align: left;
+        font-size: 10px;
+        font-weight: normal;
+      }
+
+      .description-col {
+        width: auto;
+      }
+
+      .amount-col {
+        width: 110px;
+        text-align: right;
+        padding-right: 15px;
+      }
+
+      .payment-table tbody td {
+        padding: 10px 8px;
+        border: 1px solid #d1d5db;
+        vertical-align: top;
+        font-size: 9px;
+      }
+
+      .amount-cell {
+        text-align: right;
+        padding-right: 15px;
+      }
+
+      .commitment-paid {
+        color: #22C55E;
+        font-weight: bold;
+      }
+
+      .total-row {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        gap: 50px;
+        padding: 12px 15px 12px 0;
+        border-bottom: 2px solid #e5e7eb;
+        margin-top: -1px;
+      }
+
+      .total-label {
+        font-size: 11px;
+        font-weight: normal;
+      }
+
+      .total-amount {
+        font-size: 16px;
+        font-weight: bold;
+        color: #1e40af;
+      }
+
+      /* Footer Section */
+      .footer-info {
+        margin: 25px 0;
+        padding: 15px 0;
+      }
+
+      .payment-info {
+        font-size: 9px;
+      }
+
+      .payment-row {
+        margin-bottom: 3px;
+        display: flex;
+        align-items: center;
+      }
+
+      .payment-label {
+        font-weight: normal;
+        min-width: 80px;
+        margin-right: 15px;
+      }
+
+      .payment-value {
+        flex: 1;
+      }
+
+      /* Thank You Message */
+      .thank-you {
+        text-align: center;
+        margin-top: 40px;
+        padding-top: 20px;
+        font-size: 10px;
+        color: #22C55E;
+        font-style: normal;
+      }
+
+      @page {
+        size: A4;
+        margin: 0;
+      }
+
+      @media print {
+        body {
+          margin: 0;
+        }
+        .page-container {
+          max-width: 100%;
+          padding: 15mm;
         }
       }
     `;
