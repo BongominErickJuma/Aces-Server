@@ -17,6 +17,9 @@ const {
   sanitizeInput
 } = require('./middleware/security.middleware');
 
+// Import CORS configuration
+const { corsOptions } = require('./config/cors.config');
+
 const app = express();
 
 // Trust proxy for rate limiting and IP detection
@@ -26,14 +29,7 @@ app.set('trust proxy', 1);
 app.use(securityHeaders);
 
 // CORS configuration
-app.use(
-  cors({
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key']
-  })
-);
+app.use(cors(corsOptions));
 
 // Request size limiting
 app.use(requestSizeLimiter);
