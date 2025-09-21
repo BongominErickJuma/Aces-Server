@@ -52,10 +52,18 @@ const getQuotations = async (req, res) => {
 
     // Text search
     if (search) {
+      // First, try to find users matching the search term
+      const User = require('../models/User.model');
+      const matchingUsers = await User.find({
+        fullName: { $regex: search, $options: 'i' }
+      }).select('_id');
+      const userIds = matchingUsers.map(user => user._id);
+
       filter.$or = [
         { quotationNumber: { $regex: search, $options: 'i' } },
         { 'client.name': { $regex: search, $options: 'i' } },
-        { 'client.company': { $regex: search, $options: 'i' } }
+        { 'client.company': { $regex: search, $options: 'i' } },
+        { createdBy: { $in: userIds } }
       ];
     }
 

@@ -9,6 +9,18 @@ const receiptValidation = [
     .isIn(['box', 'commitment', 'final', 'one_time'])
     .withMessage('Receipt type must be box, commitment, final, or one_time'),
 
+  body('moveType')
+    .optional()
+    .isIn(['international', 'residential', 'office'])
+    .withMessage('Move type must be international, residential, or office')
+    .custom((value, { req }) => {
+      // Move type is required for all receipts except box receipts
+      if (req.body.receiptType !== 'box' && !value) {
+        throw new Error('Move type is required for this receipt type');
+      }
+      return true;
+    }),
+
   // Custom validation for services based on receipt type
   body('services').custom((value, { req }) => {
     // For commitment, final, and one_time receipts, services are generated automatically

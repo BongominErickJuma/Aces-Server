@@ -13,8 +13,8 @@ const receiptSchema = new mongoose.Schema(
       unique: true,
       trim: true,
       match: [
-        /^(RCP|BOX|COM|FIN|OTP)-\d{4}-\d{4}$/,
-        'Receipt number must follow format PREFIX-YYYY-NNNN'
+        /^AMRC-(RCP|BOX|COM|FIN|OTP)-\d{5}$/,
+        'Receipt number must follow format AMRC-PREFIX-NNNNN'
       ]
     },
     receiptType: {
@@ -24,6 +24,14 @@ const receiptSchema = new mongoose.Schema(
         values: ['box', 'commitment', 'final', 'one_time'],
         message: 'Receipt type must be box, commitment, final, or one_time'
       }
+    },
+    moveType: {
+      type: String,
+      enum: {
+        values: ['international', 'residential', 'office'],
+        message: 'Move type must be international, residential, or office'
+      }
+      // Optional - not required for box receipts
     },
     quotationId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -401,8 +409,6 @@ receiptSchema.pre('save', function (next) {
 
 // Static method to generate receipt number
 receiptSchema.statics.generateReceiptNumber = async function (receiptType) {
-  const currentYear = new Date().getFullYear();
-
   // Determine prefix based on receipt type
   const prefixMap = {
     box: 'BOX',
@@ -412,9 +418,9 @@ receiptSchema.statics.generateReceiptNumber = async function (receiptType) {
   };
 
   const prefix = prefixMap[receiptType] || 'RCP';
-  const counterKey = `${receiptType}_receipt_${currentYear}`;
+  const counterKey = `${receiptType}_receipt`;
 
-  // Find or create counter for current year and type
+  // Find or create counter for the receipt type (no year)
   const Counter = mongoose.model('Counter');
   const counter = await Counter.findOneAndUpdate(
     { _id: counterKey },
@@ -422,8 +428,8 @@ receiptSchema.statics.generateReceiptNumber = async function (receiptType) {
     { upsert: true, new: true }
   );
 
-  const sequenceNumber = String(counter.sequence).padStart(4, '0');
-  return `${prefix}-${currentYear}-${sequenceNumber}`;
+  const sequenceNumber = String(counter.sequence).padStart(5, '0');
+  return `AMRC-${prefix}-${sequenceNumber}`;
 };
 
 // Static method to find by receipt number

@@ -13,8 +13,8 @@ const quotationSchema = new mongoose.Schema(
       unique: true,
       trim: true,
       match: [
-        /^QTN-\d{4}-\d{4}$/,
-        'Quotation number must follow format QTN-YYYY-NNNN'
+        /^AMRC-\d{5}$/,
+        'Quotation number must follow format AMRC-NNNNN'
       ]
     },
     type: {
@@ -287,10 +287,9 @@ quotationSchema.pre('save', function (next) {
 
 // Static method to generate quotation number
 quotationSchema.statics.generateQuotationNumber = async function () {
-  const currentYear = new Date().getFullYear();
-  const counterKey = `quotation_${currentYear}`;
+  const counterKey = `quotation`;
 
-  // Find or create counter for current year
+  // Find or create counter for quotations (no year)
   const Counter = mongoose.model('Counter');
   const counter = await Counter.findOneAndUpdate(
     { _id: counterKey },
@@ -298,8 +297,8 @@ quotationSchema.statics.generateQuotationNumber = async function () {
     { upsert: true, new: true }
   );
 
-  const sequenceNumber = String(counter.sequence).padStart(4, '0');
-  return `QTN-${currentYear}-${sequenceNumber}`;
+  const sequenceNumber = String(counter.sequence).padStart(5, '0');
+  return `AMRC-${sequenceNumber}`;
 };
 
 // Static method to find by quotation number

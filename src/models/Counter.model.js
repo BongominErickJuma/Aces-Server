@@ -53,7 +53,7 @@ counterSchema.index({ lastUsed: 1 });
 
 // Virtual for formatted counter ID
 counterSchema.virtual('formattedId').get(function () {
-  return `${this.prefix}-${this.year}-${String(this.sequence).padStart(4, '0')}`;
+  return `AMRC-${this.prefix}-${String(this.sequence).padStart(5, '0')}`;
 });
 
 // Virtual for next number
@@ -78,7 +78,7 @@ counterSchema.statics.getNextSequence = async function (type, year = null) {
   };
 
   const prefix = prefixMap[type] || 'DOC';
-  const counterId = `${type}_${year}`;
+  const counterId = type; // Remove year from counter ID for new format
 
   const counter = await this.findOneAndUpdate(
     { _id: counterId },
@@ -86,9 +86,9 @@ counterSchema.statics.getNextSequence = async function (type, year = null) {
       $inc: { sequence: 1 },
       $set: {
         prefix,
-        year,
+        year: year || new Date().getFullYear(), // Keep year for reference but don't use in counter ID
         lastUsed: new Date(),
-        description: `${type.replace('_', ' ')} counter for ${year}`
+        description: `${type.replace('_', ' ')} counter`
       }
     },
     {
@@ -100,7 +100,7 @@ counterSchema.statics.getNextSequence = async function (type, year = null) {
 
   return {
     sequence: counter.sequence,
-    formattedNumber: `${prefix}-${year}-${String(counter.sequence).padStart(4, '0')}`,
+    formattedNumber: `AMRC-${prefix}-${String(counter.sequence).padStart(5, '0')}`,
     counterId: counter._id
   };
 };
@@ -123,7 +123,7 @@ counterSchema.statics.resetYearlyCounters = async function (year = null) {
   const results = [];
 
   for (const type of counterTypes) {
-    const counterId = `${type}_${year}`;
+    const counterId = type; // Remove year from counter ID for new format
 
     // Only create if doesn't exist
     const existing = await this.findById(counterId);
@@ -141,8 +141,8 @@ counterSchema.statics.resetYearlyCounters = async function (year = null) {
         _id: counterId,
         sequence: 0,
         prefix: prefixMap[type],
-        year,
-        description: `${type.replace('_', ' ')} counter for ${year}`
+        year: year || new Date().getFullYear(),
+        description: `${type.replace('_', ' ')} counter`
       });
 
       await counter.save();

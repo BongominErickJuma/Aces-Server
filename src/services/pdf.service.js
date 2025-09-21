@@ -91,12 +91,22 @@ class PDFService {
    * Format currency amount
    */
   formatCurrency(amount, currency = 'UGX') {
-    const formatter = new Intl.NumberFormat('en-UG', {
-      style: 'currency',
-      currency: currency,
-      minimumFractionDigits: currency === 'UGX' ? 0 : 2
-    });
-    return formatter.format(amount);
+    if (currency === 'UGX') {
+      // Custom formatting for UGX to show "UGX XXXXX" format
+      const number = new Intl.NumberFormat('en-US', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+      }).format(amount);
+      return `UGX ${number}`;
+    } else {
+      // Use standard formatting for other currencies
+      const formatter = new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: currency,
+        minimumFractionDigits: currency === 'USD' ? 2 : 0
+      });
+      return formatter.format(amount);
+    }
   }
 
   /**
@@ -263,16 +273,17 @@ class PDFService {
         <td class="service-number">${index + 1}</td>
         <td class="service-name">${service.name}</td>
         <td class="service-description">${service.description}</td>
-        <td class="service-amount">${this.formatCurrency(service.total, quotation.pricing.currency).replace('UGX ', '').replace(/,/g, ',') + ' UGX'}</td>
+        <td class="service-amount">${this.formatCurrency(service.total, quotation.pricing.currency)}</td>
       </tr>
     `
       )
       .join('');
 
     // Format grand total to match sample
-    const grandTotal = this.formatCurrency(quotation.pricing.totalAmount, quotation.pricing.currency)
-      .replace('UGX ', '')
-      .replace(/,/g, ',') + ' UGX';
+    const grandTotal = this.formatCurrency(
+      quotation.pricing.totalAmount,
+      quotation.pricing.currency
+    );
 
     return `
       <!DOCTYPE html>
@@ -378,11 +389,15 @@ class PDFService {
           </div>
 
           <!-- Note Section -->
-          ${quotation.notes ? `
+          ${
+            quotation.notes
+              ? `
           <div class="note-section">
             <div class="note-header">NOTE:</div>
             <div class="note-text">${quotation.notes}</div>
-          </div>` : ''}
+          </div>`
+              : ''
+          }
 
           <!-- Footer Section -->
           <div class="footer-section">
@@ -404,14 +419,17 @@ class PDFService {
       : null;
 
     // Get the last payment from payment history to get receivedBy info
-    const lastPayment = receipt.payment.paymentHistory?.[receipt.payment.paymentHistory.length - 1];
+    const lastPayment =
+      receipt.payment.paymentHistory?.[
+        receipt.payment.paymentHistory.length - 1
+      ];
     const receivedBy = lastPayment?.receivedBy?.fullName || 'Kamoga Geofrey';
-    const paymentMode = lastPayment?.method?.replace('_', ' ') || 'Mobile Money';
+    const paymentMode =
+      lastPayment?.method?.replace('_', ' ') || 'Mobile Money';
 
-    // Format currency without the currency prefix for UGX amounts
-    const formatUGX = (amount) => {
-      const formatted = this.formatCurrency(amount, receipt.payment.currency || 'UGX');
-      return formatted.replace(/UGX\s*/, 'UGX ');
+    // Format currency for receipt amounts
+    const formatUGX = amount => {
+      return this.formatCurrency(amount, receipt.payment.currency || 'UGX');
     };
 
     // Generate signature HTML
@@ -419,7 +437,27 @@ class PDFService {
       ? `<img src="${receipt.createdBy.signature.data}" alt="Signature" style="max-width: 100px; max-height: 40px;" />`
       : '<div style="width: 100px; height: 40px; background: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==); background-size: contain; background-repeat: no-repeat;"></div>';
 
+    // For box receipts, use the new template format
+    if (receipt.receiptType === 'box') {
+      return await this.generateBoxReceiptHTML(receipt);
+    }
 
+    // For commitment receipts, use the new template format
+    if (receipt.receiptType === 'commitment') {
+      return await this.generateCommitmentReceiptHTML(receipt);
+    }
+
+    // For final receipts, use the final receipt template format
+    if (receipt.receiptType === 'final') {
+      return await this.generateFinalReceiptHTML(receipt);
+    }
+
+    // For one-time receipts, use the one-time receipt template format
+    if (receipt.receiptType === 'one_time') {
+      return await this.generateOneTimeReceiptHTML(receipt);
+    }
+
+    // For other receipt types, use the existing format
     return `
       <!DOCTYPE html>
       <html lang="en">
@@ -433,7 +471,7 @@ class PDFService {
       </head>
       <body>
         ${await this.generateCompanyHeader()}
-        
+
         <div class="document-title">
           <h2>RECEIPT</h2>
           ${receipt.payment.status === 'paid' ? '<div class="paid-stamp">PAID</div>' : ''}
@@ -455,7 +493,7 @@ class PDFService {
             <table class="info-table">
               <tr><td><strong>Name:</strong></td><td>${receipt.client.name}</td></tr>
               <tr><td><strong>Phone:</strong></td><td>${receipt.client.phone}</td></tr>
-              ${receipt.client.email ? `<tr><td><strong>Email:</strong></td><td>${receipt.client.email}</td></tr>` : ''}
+              ${receipt.receiptType !== 'box' && receipt.moveType ? `<tr><td><strong>Move Type:</strong></td><td>${receipt.moveType.charAt(0).toUpperCase() + receipt.moveType.slice(1)} Move</td></tr>` : ''}
               ${receipt.client.address ? `<tr><td><strong>Address:</strong></td><td>${receipt.client.address}</td></tr>` : ''}
             </table>
           </div>
@@ -486,16 +524,8 @@ class PDFService {
               </thead>
               <tbody>
                 ${
-                  receipt.receiptType === 'box'
-                    ? (receipt.services && receipt.services.length > 0
-                        ? receipt.services.map(service => `
-                <tr>
-                  <td>${service.description || service.name || 'Service'}</td>
-                  <td class="amount-cell">${formatUGX(service.total || service.amount || 0)}</td>
-                </tr>`).join('')
-                        : `<tr><td>No services listed</td><td class="amount-cell">${formatUGX(0)}</td></tr>`)
-                    : receipt.receiptType === 'commitment'
-                      ? `
+                  receipt.receiptType === 'commitment'
+                    ? `
                 <tr>
                   <td>Commitment Fee Paid:</td>
                   <td class="amount-cell commitment-paid">${formatUGX(receipt.commitmentFeePaid || 0)}</td>
@@ -508,35 +538,10 @@ class PDFService {
                   <td>Balance Due:</td>
                   <td class="amount-cell">${formatUGX((receipt.totalMovingAmount || 0) - (receipt.commitmentFeePaid || 0))}</td>
                 </tr>`
-                      : receipt.receiptType === 'final'
-                        ? `
-                <tr>
-                  <td>Commitment Fee Paid (Previously):</td>
-                  <td class="amount-cell">${formatUGX(receipt.commitmentFeePaid || 0)}</td>
-                </tr>
-                <tr>
-                  <td>Final Payment Received:</td>
-                  <td class="amount-cell">${formatUGX(receipt.finalPaymentReceived || 0)}</td>
-                </tr>
-                <tr>
-                  <td>Grand Total:</td>
-                  <td class="amount-cell">${formatUGX((receipt.commitmentFeePaid || 0) + (receipt.finalPaymentReceived || 0))}</td>
-                </tr>`
-                        : receipt.receiptType === 'one_time'
-                          ? `
-                <tr>
-                  <td>Total Cost For Moving:</td>
-                  <td class="amount-cell">${formatUGX(receipt.totalMovingAmount || 0)}</td>
-                </tr>`
-                          : ''
+                    : ''
                 }
               </tbody>
             </table>
-            ${receipt.receiptType === 'box' ? `
-            <div class="total-row">
-              <span class="total-label">Total:</span>
-              <span class="total-amount">${formatUGX(receipt.payment.totalAmount || 0)}</span>
-            </div>` : ''}
           </div>
 
           <!-- Footer Section -->
@@ -555,6 +560,1773 @@ class PDFService {
         </div>
       </body>
       </html>
+    `;
+  }
+
+  /**
+   * Generate box receipt HTML template matching the PDF format
+   */
+  async generateBoxReceiptHTML(receipt) {
+    const createdDate = this.formatDate(receipt.createdAt);
+
+    // Get the last payment from payment history to get receivedBy info
+    const lastPayment =
+      receipt.payment.paymentHistory?.[
+        receipt.payment.paymentHistory.length - 1
+      ];
+    const receivedBy = lastPayment?.receivedBy?.fullName || 'Kamoga Geofrey';
+    const paymentMode =
+      lastPayment?.method
+        ?.replace('_', ' ')
+        ?.replace(/mobile_money/i, 'Mobile Money')
+        ?.replace(/mobile money/i, 'Mobile Money') || 'Mobile Money';
+
+    // Generate signature HTML
+    const signatureHTML = receipt.createdBy?.signature?.data
+      ? `<img src="${receipt.createdBy.signature.data}" alt="Signature" style="max-width: 80px; max-height: 30px;" />`
+      : '';
+
+    // Try multiple possible paths for the logo
+    const possiblePaths = [
+      path.join(process.cwd(), 'backend', 'public', 'img', 'Aces_logo.svg'),
+      path.join(__dirname, '..', '..', 'public', 'img', 'Aces_logo.svg'),
+      path.join(process.cwd(), 'public', 'img', 'Aces_logo.svg')
+    ];
+
+    let logoBase64 = '';
+    for (const logoPath of possiblePaths) {
+      try {
+        const logoBuffer = await fs.readFile(logoPath);
+        logoBase64 = `data:image/svg+xml;base64,${logoBuffer.toString('base64')}`;
+        break;
+      } catch (error) {
+        // Continue trying other paths
+      }
+    }
+
+    // Format services for display
+    const services = receipt.services || [];
+    const servicesHTML = services
+      .map(service => {
+        const amount = service.total || service.amount || 0;
+        const formatted = this.formatCurrency(
+          amount,
+          receipt.payment.currency || 'UGX'
+        );
+        return `
+        <tr>
+          <td class="service-description">${service.description || service.name || 'Service'}</td>
+          <td class="service-amount">${formatted}</td>
+        </tr>
+      `;
+      })
+      .join('');
+
+    // Calculate total
+    const totalAmount =
+      receipt.payment.totalAmount ||
+      services.reduce(
+        (sum, service) => sum + (service.total || service.amount || 0),
+        0
+      );
+    const formattedTotal = this.formatCurrency(
+      totalAmount,
+      receipt.payment.currency || 'UGX'
+    );
+
+    return `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Receipt ${receipt.receiptNumber}</title>
+        <style>
+          ${this.getBoxReceiptStyles()}
+        </style>
+      </head>
+      <body>
+        <div class="receipt-container">
+          <!-- Header Section -->
+          <div class="header-section">
+            <div class="header-left">
+              ${logoBase64 ? `<img src="${logoBase64}" alt="AcesMovers" class="logo" />` : ''}
+            </div>
+            <div class="header-right">
+              <h1 class="receipt-title">RECEIPT</h1>
+            </div>
+          </div>
+
+          <!-- Company Info -->
+          <div class="company-info">
+            <div class="company-name">Aces Movers and Relocation Company Limited</div>
+            <div class="company-address">
+              <p>Kigowa2 Kulambiro Kisaasi Ring Road 83AD</p>
+              <p>Kampala, Uganda.</p>
+            </div>
+            <div class="company-contact">
+              <p class="email">infor@acesmovers.com</p>
+              <p class="phone">+256 778 259191</p>
+              <p class="phone">+256 725 711730</p>
+              <p class="website">acesmovers.com</p>
+            </div>
+          </div>
+
+          <!-- Receipt Info Box -->
+          <div class="receipt-info-box">
+            <div class="info-row">
+              <span class="info-label">Receipt No:</span>
+              <span class="info-value">${receipt.receiptNumber}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Date:</span>
+              <span class="info-value">${createdDate}</span>
+            </div>
+          </div>
+
+          <!-- Client Info Section -->
+          <div class="client-section">
+            <div class="client-row">
+              <span class="client-label">Clients Name:</span>
+              <span class="client-value">${receipt.client.name}</span>
+            </div>
+            <div class="client-row">
+              <span class="client-label">Phone Number:</span>
+              <span class="client-value">${receipt.client.phone}</span>
+            </div>
+            <div class="client-row">
+              <span class="client-label">Address:</span>
+              <span class="client-value">${receipt.client.address || ''}</span>
+            </div>
+          </div>
+
+          <!-- Services Table -->
+          <div class="services-section">
+            <table class="services-table">
+              <thead>
+                <tr>
+                  <th class="col-description">Description</th>
+                  <th class="col-amount">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${servicesHTML}
+              </tbody>
+              <tfoot>
+                <tr class="total-row">
+                  <td class="total-label">Total:</td>
+                  <td class="total-amount">${formattedTotal}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          <!-- Payment Info Section -->
+          <div class="payment-section">
+            <div class="payment-row">
+              <span class="payment-label">Payment Mode:</span>
+              <span class="payment-value">${paymentMode}</span>
+            </div>
+            <div class="payment-row">
+              <span class="payment-label">Received By:</span>
+              <span class="payment-value">${receivedBy}</span>
+            </div>
+            <div class="payment-row">
+              <span class="payment-label">Signature:</span>
+              <span class="payment-value signature-value">${signatureHTML}</span>
+            </div>
+          </div>
+
+          <!-- Thank You Message -->
+          <div class="thank-you-message">
+            Thank you for the support. We look forward to working with you in the future.
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+  }
+
+  /**
+   * Generate final receipt HTML template matching the PDF format
+   */
+  async generateFinalReceiptHTML(receipt) {
+    const createdDate = this.formatDate(receipt.createdAt);
+    const movingDate = receipt.locations?.movingDate
+      ? this.formatDate(receipt.locations.movingDate)
+      : this.formatDate(receipt.movingDate) || '';
+
+    // Get the last payment from payment history to get receivedBy info
+    const lastPayment =
+      receipt.payment.paymentHistory?.[
+        receipt.payment.paymentHistory.length - 1
+      ];
+    const receivedBy = lastPayment?.receivedBy?.fullName || 'Kamoga Geofrey';
+    const paymentMode =
+      lastPayment?.method
+        ?.replace('_', ' ')
+        ?.replace(/mobile_money/i, 'Mobile Money')
+        ?.replace(/mobile money/i, 'Mobile Money') || 'Mobile Money';
+
+    // Generate signature HTML
+    const signatureHTML = receipt.createdBy?.signature?.data
+      ? `<img src="${receipt.createdBy.signature.data}" alt="Signature" style="max-width: 80px; max-height: 30px;" />`
+      : '';
+
+    // Try multiple possible paths for the logo
+    const possiblePaths = [
+      path.join(process.cwd(), 'backend', 'public', 'img', 'Aces_logo.svg'),
+      path.join(__dirname, '..', '..', 'public', 'img', 'Aces_logo.svg'),
+      path.join(process.cwd(), 'public', 'img', 'Aces_logo.svg')
+    ];
+
+    let logoBase64 = '';
+    for (const logoPath of possiblePaths) {
+      try {
+        const logoBuffer = await fs.readFile(logoPath);
+        logoBase64 = `data:image/svg+xml;base64,${logoBuffer.toString('base64')}`;
+        break;
+      } catch (error) {
+        // Continue trying other paths
+      }
+    }
+
+    // Format amounts
+    const commitmentFeePaid = this.formatCurrency(
+      receipt.commitmentFeePaid || 0,
+      receipt.payment.currency || 'UGX'
+    );
+    const finalPaymentReceived = this.formatCurrency(
+      receipt.finalPaymentReceived || 0,
+      receipt.payment.currency || 'UGX'
+    );
+    const grandTotal = this.formatCurrency(
+      (receipt.commitmentFeePaid || 0) + (receipt.finalPaymentReceived || 0),
+      receipt.payment.currency || 'UGX'
+    );
+
+    // Get service type (residential, commercial, etc.)
+    const serviceType = receipt.moveType
+      ? `${receipt.moveType.charAt(0).toUpperCase() + receipt.moveType.slice(1)} Move`
+      : 'Residential Move';
+
+    return `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Receipt ${receipt.receiptNumber}</title>
+        <style>
+          ${this.getFinalReceiptStyles()}
+        </style>
+      </head>
+      <body>
+        <div class="receipt-container">
+          <!-- Header Section -->
+          <div class="header-section">
+            <div class="header-left">
+              ${logoBase64 ? `<img src="${logoBase64}" alt="AcesMovers" class="logo" />` : ''}
+            </div>
+            <div class="header-right">
+              <h1 class="receipt-title">RECEIPT</h1>
+            </div>
+          </div>
+
+          <!-- Company Info -->
+          <div class="company-info">
+            <div class="company-name">Aces Movers and Relocation Company Limited</div>
+            <div class="company-address">
+              <p>Kigowa2 Kulambiro Kisaasi Ring Road 83AD</p>
+              <p>Kampala, Uganda.</p>
+            </div>
+            <div class="company-contact">
+              <p class="email">infor@acesmovers.com</p>
+              <p class="phone">+256 778 259191</p>
+              <p class="phone">+256 725 711730</p>
+              <p class="website">acesmovers.com</p>
+            </div>
+          </div>
+
+          <!-- Receipt Info Box -->
+          <div class="receipt-info-box">
+            <div class="info-row">
+              <span class="info-label">Receipt No:</span>
+              <span class="info-value">${receipt.receiptNumber}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Date:</span>
+              <span class="info-value">${createdDate}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Service Type:</span>
+              <span class="info-value">${serviceType}</span>
+            </div>
+          </div>
+
+          <!-- Client Info Section -->
+          <div class="client-section">
+            <div class="client-row">
+              <span class="client-label">Clients Name:</span>
+              <span class="client-value">${receipt.client.name}</span>
+            </div>
+            <div class="client-row">
+              <span class="client-label">Phone Number:</span>
+              <span class="client-value">${receipt.client.phone}</span>
+            </div>
+            <div class="client-row">
+              <span class="client-label">Pickup Location:</span>
+              <span class="client-value">${receipt.locations?.from || ''}</span>
+            </div>
+            <div class="client-row">
+              <span class="client-label">Destination:</span>
+              <span class="client-value">${receipt.locations?.to || ''}</span>
+            </div>
+            ${
+              movingDate
+                ? `<div class="client-row">
+              <span class="client-label">Moving Date:</span>
+              <span class="client-value">${movingDate}</span>
+            </div>`
+                : ''
+            }
+          </div>
+
+          <!-- Payment Table -->
+          <div class="payment-table-section">
+            <table class="payment-table">
+              <thead>
+                <tr>
+                  <th class="col-description">Description</th>
+                  <th class="col-amount">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="payment-description">Commitment Fee Paid (Previously):</td>
+                  <td class="payment-amount">${commitmentFeePaid}</td>
+                </tr>
+                <tr class="alt-row">
+                  <td class="payment-description">Final Payment Received:</td>
+                  <td class="payment-amount final-payment">${finalPaymentReceived}</td>
+                </tr>
+                <tr>
+                  <td class="payment-description">Grand Total:</td>
+                  <td class="payment-amount grand-total">${grandTotal}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Payment Info Section -->
+          <div class="payment-section">
+            <div class="payment-row">
+              <span class="payment-label">Payment Mode:</span>
+              <span class="payment-value">${paymentMode}</span>
+            </div>
+            <div class="payment-row">
+              <span class="payment-label">Received By:</span>
+              <span class="payment-value">${receivedBy}</span>
+            </div>
+            <div class="payment-row">
+              <span class="payment-label">Signature:</span>
+              <span class="payment-value signature-value">${signatureHTML}</span>
+            </div>
+          </div>
+
+          <!-- Thank You Message -->
+          <div class="thank-you-message">
+            Thank you for the support. We look forward to working with you in the future.
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+  }
+
+  /**
+   * Generate one-time receipt HTML template matching the PDF format
+   */
+  async generateOneTimeReceiptHTML(receipt) {
+    const createdDate = this.formatDate(receipt.createdAt);
+
+    // Get the last payment from payment history to get receivedBy info
+    const lastPayment =
+      receipt.payment.paymentHistory?.[
+        receipt.payment.paymentHistory.length - 1
+      ];
+    const receivedBy = lastPayment?.receivedBy?.fullName || 'Kamoga Geofrey';
+    const paymentMode =
+      lastPayment?.method
+        ?.replace('_', ' ')
+        ?.replace(/mobile_money/i, 'Mobile Money')
+        ?.replace(/mobile money/i, 'Mobile Money') || 'Mobile Money';
+
+    // Generate signature HTML
+    const signatureHTML = receipt.createdBy?.signature?.data
+      ? `<img src="${receipt.createdBy.signature.data}" alt="Signature" style="max-width: 80px; max-height: 30px;" />`
+      : '';
+
+    // Try multiple possible paths for the logo
+    const possiblePaths = [
+      path.join(process.cwd(), 'backend', 'public', 'img', 'Aces_logo.svg'),
+      path.join(__dirname, '..', '..', 'public', 'img', 'Aces_logo.svg'),
+      path.join(process.cwd(), 'public', 'img', 'Aces_logo.svg')
+    ];
+
+    let logoBase64 = '';
+    for (const logoPath of possiblePaths) {
+      try {
+        const logoBuffer = await fs.readFile(logoPath);
+        logoBase64 = `data:image/svg+xml;base64,${logoBuffer.toString('base64')}`;
+        break;
+      } catch (error) {
+        // Continue trying other paths
+      }
+    }
+
+    // Format amounts
+    const totalCostForMoving = this.formatCurrency(
+      receipt.totalMovingAmount || 0,
+      receipt.payment.currency || 'UGX'
+    );
+
+    // Get service type (residential, commercial, etc.)
+    const serviceType = receipt.moveType
+      ? `${receipt.moveType.charAt(0).toUpperCase() + receipt.moveType.slice(1)} Move`
+      : 'Residential Move';
+
+    return `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Receipt ${receipt.receiptNumber}</title>
+        <style>
+          ${this.getOneTimeReceiptStyles()}
+        </style>
+      </head>
+      <body>
+        <div class="receipt-container">
+          <!-- Header Section -->
+          <div class="header-section">
+            <div class="header-left">
+              ${logoBase64 ? `<img src="${logoBase64}" alt="AcesMovers" class="logo" />` : ''}
+            </div>
+            <div class="header-right">
+              <h1 class="receipt-title">RECEIPT</h1>
+            </div>
+          </div>
+
+          <!-- Company Info -->
+          <div class="company-info">
+            <div class="company-name">Aces Movers and Relocation Company Limited</div>
+            <div class="company-address">
+              <p>Kigowa2 Kulambiro Kisaasi Ring Road 83AD</p>
+              <p>Kampala, Uganda.</p>
+            </div>
+            <div class="company-contact">
+              <p class="email">infor@acesmovers.com</p>
+              <p class="phone">+256 778 259191</p>
+              <p class="phone">+256 725 711730</p>
+              <p class="website">acesmovers.com</p>
+            </div>
+          </div>
+
+          <!-- Receipt Info Box -->
+          <div class="receipt-info-box">
+            <div class="info-row">
+              <span class="info-label">Receipt No:</span>
+              <span class="info-value">${receipt.receiptNumber}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Date:</span>
+              <span class="info-value">${createdDate}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Service Type:</span>
+              <span class="info-value">${serviceType}</span>
+            </div>
+          </div>
+
+          <!-- Client Info Section -->
+          <div class="client-section">
+            <div class="client-row">
+              <span class="client-label">Clients Name:</span>
+              <span class="client-value">${receipt.client.name}</span>
+            </div>
+            <div class="client-row">
+              <span class="client-label">Phone Number:</span>
+              <span class="client-value">${receipt.client.phone}</span>
+            </div>
+            <div class="client-row">
+              <span class="client-label">Pickup Location:</span>
+              <span class="client-value">${receipt.locations?.from || ''}</span>
+            </div>
+            <div class="client-row">
+              <span class="client-label">Destination:</span>
+              <span class="client-value">${receipt.locations?.to || ''}</span>
+            </div>
+          </div>
+
+          <!-- Payment Table -->
+          <div class="payment-table-section">
+            <table class="payment-table">
+              <thead>
+                <tr>
+                  <th class="col-description">Description</th>
+                  <th class="col-amount">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="payment-description">Total Cost For Moving:</td>
+                  <td class="payment-amount">${totalCostForMoving}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Payment Info Section -->
+          <div class="payment-section">
+            <div class="payment-row">
+              <span class="payment-label">Payment Mode:</span>
+              <span class="payment-value">${paymentMode}</span>
+            </div>
+            <div class="payment-row">
+              <span class="payment-label">Received By:</span>
+              <span class="payment-value">${receivedBy}</span>
+            </div>
+            <div class="payment-row">
+              <span class="payment-label">Signature:</span>
+              <span class="payment-value signature-value">${signatureHTML}</span>
+            </div>
+          </div>
+
+          <!-- Thank You Message -->
+          <div class="thank-you-message">
+            Thank you for the support. We look forward to working with you in the future.
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+  }
+
+  /**
+   * Generate commitment receipt HTML template matching the PDF format
+   */
+  async generateCommitmentReceiptHTML(receipt) {
+    const createdDate = this.formatDate(receipt.createdAt);
+    const movingDate = receipt.locations?.movingDate
+      ? this.formatDate(receipt.locations.movingDate)
+      : this.formatDate(receipt.movingDate) || '';
+
+    // Get the last payment from payment history to get receivedBy info
+    const lastPayment =
+      receipt.payment.paymentHistory?.[
+        receipt.payment.paymentHistory.length - 1
+      ];
+    const receivedBy = lastPayment?.receivedBy?.fullName || 'Kamoga Geofrey';
+    const paymentMode =
+      lastPayment?.method
+        ?.replace('_', ' ')
+        ?.replace(/mobile_money/i, 'Mobile Money')
+        ?.replace(/mobile money/i, 'Mobile Money') || 'Mobile Money';
+
+    // Generate signature HTML
+    const signatureHTML = receipt.createdBy?.signature?.data
+      ? `<img src="${receipt.createdBy.signature.data}" alt="Signature" style="max-width: 80px; max-height: 30px;" />`
+      : '';
+
+    // Try multiple possible paths for the logo
+    const possiblePaths = [
+      path.join(process.cwd(), 'backend', 'public', 'img', 'Aces_logo.svg'),
+      path.join(__dirname, '..', '..', 'public', 'img', 'Aces_logo.svg'),
+      path.join(process.cwd(), 'public', 'img', 'Aces_logo.svg')
+    ];
+
+    let logoBase64 = '';
+    for (const logoPath of possiblePaths) {
+      try {
+        const logoBuffer = await fs.readFile(logoPath);
+        logoBase64 = `data:image/svg+xml;base64,${logoBuffer.toString('base64')}`;
+        break;
+      } catch (error) {
+        // Continue trying other paths
+      }
+    }
+
+    // Format amounts
+    const commitmentFeePaid = this.formatCurrency(
+      receipt.commitmentFeePaid || 0,
+      receipt.payment.currency || 'UGX'
+    );
+    const totalMovingAmount = this.formatCurrency(
+      receipt.totalMovingAmount || 0,
+      receipt.payment.currency || 'UGX'
+    );
+    const balanceDue = this.formatCurrency(
+      (receipt.totalMovingAmount || 0) - (receipt.commitmentFeePaid || 0),
+      receipt.payment.currency || 'UGX'
+    );
+
+    // Get service type (residential, commercial, etc.)
+    const serviceType = receipt.moveType
+      ? `${receipt.moveType.charAt(0).toUpperCase() + receipt.moveType.slice(1)} Move`
+      : 'Residential Move';
+
+    return `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Receipt ${receipt.receiptNumber}</title>
+        <style>
+          ${this.getCommitmentReceiptStyles()}
+        </style>
+      </head>
+      <body>
+        <div class="receipt-container">
+          <!-- Header Section -->
+          <div class="header-section">
+            <div class="header-left">
+              ${logoBase64 ? `<img src="${logoBase64}" alt="AcesMovers" class="logo" />` : ''}
+            </div>
+            <div class="header-right">
+              <h1 class="receipt-title">RECEIPT</h1>
+            </div>
+          </div>
+
+          <!-- Company Info -->
+          <div class="company-info">
+            <div class="company-name">Aces Movers and Relocation Company Limited</div>
+            <div class="company-address">
+              <p>Kigowa2 Kulambiro Kisaasi Ring Road 83AD</p>
+              <p>Kampala, Uganda.</p>
+            </div>
+            <div class="company-contact">
+              <p class="email">infor@acesmovers.com</p>
+              <p class="phone">+256 778 259191</p>
+              <p class="phone">+256 725 711730</p>
+              <p class="website">acesmovers.com</p>
+            </div>
+          </div>
+
+          <!-- Receipt Info Box -->
+          <div class="receipt-info-box">
+            <div class="info-row">
+              <span class="info-label">Receipt No:</span>
+              <span class="info-value">${receipt.receiptNumber}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Date:</span>
+              <span class="info-value">${createdDate}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Service Type:</span>
+              <span class="info-value">${serviceType}</span>
+            </div>
+          </div>
+
+          <!-- Client Info Section -->
+          <div class="client-section">
+            <div class="client-row">
+              <span class="client-label">Clients Name:</span>
+              <span class="client-value">${receipt.client.name}</span>
+            </div>
+            <div class="client-row">
+              <span class="client-label">Phone Number:</span>
+              <span class="client-value">${receipt.client.phone}</span>
+            </div>
+            <div class="client-row">
+              <span class="client-label">Pickup Location:</span>
+              <span class="client-value">${receipt.locations?.from || ''}</span>
+            </div>
+            <div class="client-row">
+              <span class="client-label">Destination:</span>
+              <span class="client-value">${receipt.locations?.to || ''}</span>
+            </div>
+            ${
+              movingDate
+                ? `<div class="client-row">
+              <span class="client-label">Moving Date:</span>
+              <span class="client-value">${movingDate}</span>
+            </div>`
+                : ''
+            }
+          </div>
+
+          <!-- Payment Table -->
+          <div class="payment-table-section">
+            <table class="payment-table">
+              <thead>
+                <tr>
+                  <th class="col-description">Description</th>
+                  <th class="col-amount">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="payment-description">Commitment Fee Paid:</td>
+                  <td class="payment-amount commitment-paid">${commitmentFeePaid}</td>
+                </tr>
+                <tr class="alt-row">
+                  <td class="payment-description">Total Amount For Moving:</td>
+                  <td class="payment-amount">${totalMovingAmount}</td>
+                </tr>
+                <tr>
+                  <td class="payment-description">Balance Due:</td>
+                  <td class="payment-amount">${balanceDue}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Payment Info Section -->
+          <div class="payment-section">
+            <div class="payment-row">
+              <span class="payment-label">Payment Mode:</span>
+              <span class="payment-value">${paymentMode}</span>
+            </div>
+            <div class="payment-row">
+              <span class="payment-label">Received By:</span>
+              <span class="payment-value">${receivedBy}</span>
+            </div>
+            <div class="payment-row">
+              <span class="payment-label">Signature:</span>
+              <span class="payment-value signature-value">${signatureHTML}</span>
+            </div>
+          </div>
+
+          <!-- Thank You Message -->
+          <div class="thank-you-message">
+            Thank you for the support. We look forward to working with you in the future.
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+  }
+
+  /**
+   * Get one-time receipt-specific CSS styles matching the PDF design
+   */
+  getOneTimeReceiptStyles() {
+    return `
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: Arial, sans-serif;
+        font-size: 11px;
+        line-height: 1.4;
+        color: #000;
+        background: white;
+      }
+
+      .receipt-container {
+        width: 100%;
+        max-width: 210mm;
+        margin: 0 auto;
+        padding: 15mm 20mm;
+      }
+
+      /* Header Section */
+      .header-section {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 10px;
+      }
+
+      .header-left {
+        flex: 1;
+      }
+
+      .logo {
+        height: 50px;
+        width: auto;
+        margin-bottom: 2px;
+      }
+
+      .receipt-title {
+        font-size: 24px;
+        font-weight: bold;
+        color: #1e40af;
+        letter-spacing: 1px;
+      }
+
+      /* Company Info */
+      .company-info {
+        margin-bottom: 15px;
+      }
+
+      .company-name {
+        font-size: 12px;
+        color: #22C55E;
+        font-weight: 600;
+        margin-bottom: 5px;
+      }
+
+      .company-address,
+      .company-contact {
+        font-size: 10px;
+        color: #333;
+        line-height: 1.3;
+      }
+
+      .company-address p,
+      .company-contact p {
+        margin: 1px 0;
+      }
+
+      .company-contact .email {
+        color: #2563eb;
+      }
+
+      .company-contact .website {
+        color: #2563eb;
+      }
+
+      /* Receipt Info Box */
+      .receipt-info-box {
+        border: 1.5px solid #6b7280;
+        padding: 10px 15px;
+        display: inline-block;
+        float: right;
+        margin-bottom: 20px;
+        margin-top: -75px;
+        background: white;
+        min-width: 200px;
+      }
+
+      .info-row {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 3px;
+        font-size: 10px;
+        gap: 15px;
+      }
+
+      .info-row:last-child {
+        margin-bottom: 0;
+      }
+
+      .info-label {
+        font-weight: normal;
+        white-space: nowrap;
+      }
+
+      .info-value {
+        font-weight: normal;
+        text-align: right;
+      }
+
+      /* Client Section */
+      .client-section {
+        clear: both;
+        margin: 30px 0 20px 0;
+        padding-top: 10px;
+        border-top: 1px solid #e5e7eb;
+      }
+
+      .client-row {
+        display: flex;
+        margin-bottom: 6px;
+        font-size: 10px;
+      }
+
+      .client-label {
+        min-width: 130px;
+        font-weight: normal;
+      }
+
+      .client-value {
+        flex: 1;
+      }
+
+      /* Payment Table Section */
+      .payment-table-section {
+        margin: 25px 0;
+      }
+
+      .payment-table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      .payment-table thead tr {
+        background-color: #6b7280;
+      }
+
+      .payment-table th {
+        color: white;
+        padding: 8px 12px;
+        text-align: left;
+        font-size: 11px;
+        font-weight: normal;
+      }
+
+      .col-description {
+        width: auto;
+      }
+
+      .col-amount {
+        width: 150px;
+        text-align: left;
+      }
+
+      .payment-table tbody td {
+        padding: 12px;
+        font-size: 11px;
+        background: white;
+      }
+
+      .payment-description {
+        color: #111;
+      }
+
+      .payment-amount {
+        text-align: left;
+        font-weight: normal;
+        color: #000;
+      }
+
+      /* Payment Info Section */
+      .payment-section {
+        margin: 30px 0;
+        padding-top: 20px;
+        border-top: 1px solid #e5e7eb;
+      }
+
+      .payment-row {
+        display: flex;
+        margin-bottom: 8px;
+        font-size: 10px;
+        align-items: center;
+      }
+
+      .payment-label {
+        min-width: 120px;
+        font-weight: normal;
+      }
+
+      .payment-value {
+        flex: 1;
+      }
+
+      .signature-value {
+        display: flex;
+        align-items: center;
+      }
+
+      /* Thank You Message */
+      .thank-you-message {
+        text-align: left;
+        margin-top: 50px;
+        padding-top: 20px;
+        font-size: 11px;
+        color: #22C55E;
+        font-style: normal;
+      }
+
+      @page {
+        size: A4;
+        margin: 0;
+      }
+
+      @media print {
+        body {
+          margin: 0;
+        }
+        .receipt-container {
+          max-width: 100%;
+          padding: 15mm;
+        }
+      }
+    `;
+  }
+
+  /**
+   * Get final receipt-specific CSS styles matching the PDF design
+   */
+  getFinalReceiptStyles() {
+    return `
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: Arial, sans-serif;
+        font-size: 11px;
+        line-height: 1.4;
+        color: #000;
+        background: white;
+      }
+
+      .receipt-container {
+        width: 100%;
+        max-width: 210mm;
+        margin: 0 auto;
+        padding: 15mm 20mm;
+      }
+
+      /* Header Section */
+      .header-section {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 10px;
+      }
+
+      .header-left {
+        flex: 1;
+      }
+
+      .logo {
+        height: 50px;
+        width: auto;
+        margin-bottom: 2px;
+      }
+
+      .receipt-title {
+        font-size: 24px;
+        font-weight: bold;
+        color: #1e40af;
+        letter-spacing: 1px;
+      }
+
+      /* Company Info */
+      .company-info {
+        margin-bottom: 15px;
+      }
+
+      .company-name {
+        font-size: 12px;
+        color: #22C55E;
+        font-weight: 600;
+        margin-bottom: 5px;
+      }
+
+      .company-address,
+      .company-contact {
+        font-size: 10px;
+        color: #333;
+        line-height: 1.3;
+      }
+
+      .company-address p,
+      .company-contact p {
+        margin: 1px 0;
+      }
+
+      .company-contact .email {
+        color: #2563eb;
+      }
+
+      .company-contact .website {
+        color: #2563eb;
+      }
+
+      /* Receipt Info Box */
+      .receipt-info-box {
+        border: 1.5px solid #6b7280;
+        padding: 10px 15px;
+        display: inline-block;
+        float: right;
+        margin-bottom: 20px;
+        margin-top: -75px;
+        background: white;
+        min-width: 200px;
+      }
+
+      .info-row {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 3px;
+        font-size: 10px;
+        gap: 15px;
+      }
+
+      .info-row:last-child {
+        margin-bottom: 0;
+      }
+
+      .info-label {
+        font-weight: normal;
+        white-space: nowrap;
+      }
+
+      .info-value {
+        font-weight: normal;
+        text-align: right;
+      }
+
+      /* Client Section */
+      .client-section {
+        clear: both;
+        margin: 30px 0 20px 0;
+        padding-top: 10px;
+        border-top: 1px solid #e5e7eb;
+      }
+
+      .client-row {
+        display: flex;
+        margin-bottom: 6px;
+        font-size: 10px;
+      }
+
+      .client-label {
+        min-width: 130px;
+        font-weight: normal;
+      }
+
+      .client-value {
+        flex: 1;
+      }
+
+      /* Payment Table Section */
+      .payment-table-section {
+        margin: 25px 0;
+      }
+
+      .payment-table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      .payment-table thead tr {
+        background-color: #6b7280;
+      }
+
+      .payment-table th {
+        color: white;
+        padding: 8px 12px;
+        text-align: left;
+        font-size: 11px;
+        font-weight: normal;
+      }
+
+      .col-description {
+        width: auto;
+      }
+
+      .col-amount {
+        width: 150px;
+        text-align: left;
+      }
+
+      .payment-table tbody td {
+        padding: 12px;
+        font-size: 11px;
+        background: white;
+      }
+
+      .payment-table tbody tr.alt-row td {
+        background: #f9fafb;
+      }
+
+      .payment-description {
+        color: #111;
+      }
+
+      .payment-amount {
+        text-align: left;
+        font-weight: normal;
+      }
+
+      .final-payment {
+        color: #000;
+        font-weight: normal;
+        font-size: 11px;
+      }
+
+      .grand-total {
+        color: #000;
+        font-weight: normal;
+        font-size: 11px;
+      }
+
+      /* Payment Info Section */
+      .payment-section {
+        margin: 30px 0;
+        padding-top: 20px;
+        border-top: 1px solid #e5e7eb;
+      }
+
+      .payment-row {
+        display: flex;
+        margin-bottom: 8px;
+        font-size: 10px;
+        align-items: center;
+      }
+
+      .payment-label {
+        min-width: 120px;
+        font-weight: normal;
+      }
+
+      .payment-value {
+        flex: 1;
+      }
+
+      .signature-value {
+        display: flex;
+        align-items: center;
+      }
+
+      /* Thank You Message */
+      .thank-you-message {
+        text-align: left;
+        margin-top: 50px;
+        padding-top: 20px;
+        font-size: 11px;
+        color: #22C55E;
+        font-style: normal;
+      }
+
+      @page {
+        size: A4;
+        margin: 0;
+      }
+
+      @media print {
+        body {
+          margin: 0;
+        }
+        .receipt-container {
+          max-width: 100%;
+          padding: 15mm;
+        }
+      }
+    `;
+  }
+
+  /**
+   * Get commitment receipt-specific CSS styles matching the PDF design
+   */
+  getCommitmentReceiptStyles() {
+    return `
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: Arial, sans-serif;
+        font-size: 11px;
+        line-height: 1.4;
+        color: #000;
+        background: white;
+      }
+
+      .receipt-container {
+        width: 100%;
+        max-width: 210mm;
+        margin: 0 auto;
+        padding: 15mm 20mm;
+      }
+
+      /* Header Section */
+      .header-section {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 10px;
+      }
+
+      .header-left {
+        flex: 1;
+      }
+
+      .logo {
+        height: 50px;
+        width: auto;
+        margin-bottom: 2px;
+      }
+
+      .tagline {
+        font-size: 9px;
+        color: #666;
+        margin-left: 2px;
+      }
+
+      .receipt-title {
+        font-size: 24px;
+        font-weight: bold;
+        color: #1e40af;
+        letter-spacing: 1px;
+      }
+
+      /* Company Info */
+      .company-info {
+        margin-bottom: 15px;
+      }
+
+      .company-name {
+        font-size: 12px;
+        color: #22C55E;
+        font-weight: 600;
+        margin-bottom: 5px;
+      }
+
+      .company-address,
+      .company-contact {
+        font-size: 10px;
+        color: #333;
+        line-height: 1.3;
+      }
+
+      .company-address p,
+      .company-contact p {
+        margin: 1px 0;
+      }
+
+      .company-contact .email {
+        color: #2563eb;
+      }
+
+      .company-contact .website {
+        color: #2563eb;
+      }
+
+      /* Receipt Info Box */
+      .receipt-info-box {
+        border: 1.5px solid #6b7280;
+        padding: 10px 15px;
+        display: inline-block;
+        float: right;
+        margin-bottom: 20px;
+        margin-top: -75px;
+        background: white;
+        min-width: 200px;
+      }
+
+      .info-row {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 3px;
+        font-size: 10px;
+        gap: 15px;
+      }
+
+      .info-row:last-child {
+        margin-bottom: 0;
+      }
+
+      .info-label {
+        font-weight: normal;
+        white-space: nowrap;
+      }
+
+      .info-value {
+        font-weight: normal;
+        text-align: right;
+      }
+
+      /* Client Section */
+      .client-section {
+        clear: both;
+        margin: 30px 0 20px 0;
+        padding-top: 10px;
+        border-top: 1px solid #e5e7eb;
+      }
+
+      .client-row {
+        display: flex;
+        margin-bottom: 6px;
+        font-size: 10px;
+      }
+
+      .client-label {
+        min-width: 130px;
+        font-weight: normal;
+      }
+
+      .client-value {
+        flex: 1;
+      }
+
+      /* Payment Table Section */
+      .payment-table-section {
+        margin: 25px 0;
+      }
+
+      .payment-table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      .payment-table thead tr {
+        background-color: #6b7280;
+      }
+
+      .payment-table th {
+        color: white;
+        padding: 8px 12px;
+        text-align: left;
+        font-size: 11px;
+        font-weight: normal;
+      }
+
+      .col-description {
+        width: auto;
+      }
+
+      .col-amount {
+        width: 150px;
+        text-align: left;
+      }
+
+      .payment-table tbody td {
+        padding: 12px;
+        font-size: 11px;
+        background: white;
+      }
+
+      .payment-table tbody tr.alt-row td {
+        background: #f9fafb;
+      }
+
+      .payment-description {
+        color: #111;
+      }
+
+      .payment-amount {
+        text-align: left;
+        font-weight: normal;
+      }
+
+      .commitment-paid {
+        color: #22C55E;
+        font-weight: bold;
+        font-size: 12px;
+      }
+
+      /* Payment Info Section */
+      .payment-section {
+        margin: 30px 0;
+        padding-top: 20px;
+        border-top: 1px solid #e5e7eb;
+      }
+
+      .payment-row {
+        display: flex;
+        margin-bottom: 8px;
+        font-size: 10px;
+        align-items: center;
+      }
+
+      .payment-label {
+        min-width: 120px;
+        font-weight: normal;
+      }
+
+      .payment-value {
+        flex: 1;
+      }
+
+      .signature-value {
+        display: flex;
+        align-items: center;
+      }
+
+      /* Thank You Message */
+      .thank-you-message {
+        text-align: left;
+        margin-top: 50px;
+        padding-top: 20px;
+        font-size: 11px;
+        color: #22C55E;
+        font-style: normal;
+      }
+
+      @page {
+        size: A4;
+        margin: 0;
+      }
+
+      @media print {
+        body {
+          margin: 0;
+        }
+        .receipt-container {
+          max-width: 100%;
+          padding: 15mm;
+        }
+      }
+    `;
+  }
+
+  /**
+   * Get box receipt-specific CSS styles matching the PDF design
+   */
+  getBoxReceiptStyles() {
+    return `
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: Arial, sans-serif;
+        font-size: 11px;
+        line-height: 1.4;
+        color: #000;
+        background: white;
+      }
+
+      .receipt-container {
+        width: 100%;
+        max-width: 210mm;
+        margin: 0 auto;
+        padding: 15mm 20mm;
+      }
+
+      /* Header Section */
+      .header-section {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 10px;
+      }
+
+      .header-left {
+        flex: 1;
+      }
+
+      .logo {
+        height: 50px;
+        width: auto;
+        margin-bottom: 2px;
+      }
+
+      .tagline {
+        font-size: 9px;
+        color: #666;
+        margin-left: 2px;
+      }
+
+      .receipt-title {
+        font-size: 24px;
+        font-weight: bold;
+        color: #1e40af;
+        letter-spacing: 1px;
+      }
+
+      /* Company Info */
+      .company-info {
+        margin-bottom: 15px;
+      }
+
+      .company-name {
+        font-size: 12px;
+        color: #22C55E;
+        font-weight: 600;
+        margin-bottom: 5px;
+      }
+
+      .company-address,
+      .company-contact {
+        font-size: 10px;
+        color: #333;
+        line-height: 1.3;
+      }
+
+      .company-address p,
+      .company-contact p {
+        margin: 1px 0;
+      }
+
+      .company-contact .email {
+        color: #2563eb;
+      }
+
+      .company-contact .website {
+        color: #2563eb;
+      }
+
+      /* Receipt Info Box */
+      .receipt-info-box {
+        border: 1.5px solid #6b7280;
+        padding: 15px 15px;
+        display: inline-block;
+        float: right;
+        margin-bottom: 20px;
+        margin-top: -90px;
+        background: white;
+        min-height: 90px;
+      }
+
+      .info-row {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 3px;
+        font-size: 10px;
+        gap: 20px;
+      }
+
+      .info-row:last-child {
+        margin-bottom: 0;
+      }
+
+      .info-label {
+        font-weight: normal;
+      }
+
+      .info-value {
+        font-weight: normal;
+      }
+
+      /* Client Section */
+      .client-section {
+        clear: both;
+        margin: 30px 0 20px 0;
+        padding-top: 10px;
+      }
+
+      .client-row {
+        display: flex;
+        margin-bottom: 6px;
+        font-size: 10px;
+      }
+
+      .client-label {
+        min-width: 120px;
+        font-weight: normal;
+      }
+
+      .client-value {
+        flex: 1;
+      }
+
+      /* Services Section */
+      .services-section {
+        margin: 25px 0;
+      }
+
+      .services-table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      .services-table thead tr {
+        background-color: #6b7280;
+      }
+
+      .services-table th {
+        color: white;
+        padding: 8px 12px;
+        text-align: left;
+        font-size: 11px;
+        font-weight: normal;
+      }
+
+      .col-description {
+        width: auto;
+      }
+
+      .col-amount {
+        width: 150px;
+        text-align: left;
+      }
+
+      .services-table tbody td {
+        padding: 10px 12px;
+        font-size: 10px;
+        background: white;
+      }
+
+      .services-table tbody tr:nth-child(even) td {
+        background: #f9fafb;
+      }
+
+      .service-description {
+        color: #111;
+      }
+
+      .service-amount {
+        text-align: left;
+        font-weight: normal;
+      }
+
+      .total-row td {
+        padding: 12px;
+        font-weight: bold;
+        font-size: 14px;
+        background: white !important;
+      }
+
+      .total-label {
+        text-align: left;
+      }
+
+      .total-amount {
+        text-align: left;
+        color: #1e40af;
+        font-size: 16px;
+      }
+
+      /* Payment Section */
+      .payment-section {
+        margin: 30px 0;
+      }
+
+      .payment-row {
+        display: flex;
+        margin-bottom: 8px;
+        font-size: 10px;
+        align-items: center;
+      }
+
+      .payment-label {
+        min-width: 120px;
+        font-weight: normal;
+      }
+
+      .payment-value {
+        flex: 1;
+      }
+
+      .signature-value {
+        display: flex;
+        align-items: center;
+      }
+
+      /* Thank You Message */
+      .thank-you-message {
+        text-align: left;
+        margin-top: 50px;
+        padding-top: 20px;
+        font-size: 11px;
+        color: #22C55E;
+        font-style: normal;
+      }
+
+      @page {
+        size: A4;
+        margin: 0;
+      }
+
+      @media print {
+        body {
+          margin: 0;
+        }
+        .receipt-container {
+          max-width: 100%;
+          padding: 15mm;
+        }
+      }
     `;
   }
 
@@ -776,8 +2548,8 @@ class PDFService {
       }
 
       .service-amount {
-        text-align: right;
-        padding-right: 15px;
+        text-align: left;
+        padding-left: 15px;
       }
 
       .total-row {
