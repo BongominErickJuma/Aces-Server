@@ -1165,17 +1165,24 @@ function formatGroupName(groupName) {
     }
 
     // If it's a date-based group
-    if (parts.length >= 5 && !isNaN(parts[2]) && !isNaN(parts[3]) && !isNaN(parts[4])) {
+    if (
+      parts.length >= 5 &&
+      !isNaN(parts[2]) &&
+      !isNaN(parts[3]) &&
+      !isNaN(parts[4])
+    ) {
       const date = `${parts[2]}-${parts[3]}-${parts[4]}`;
       return `${subtype.charAt(0).toUpperCase() + subtype.slice(1)} (${date})`;
     }
   }
 
   // Fallback: just clean up the group name
-  return groupName
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, l => l.toUpperCase())
-    .substring(0, 50) + (groupName.length > 50 ? '...' : '');
+  return (
+    groupName
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, l => l.toUpperCase())
+      .substring(0, 50) + (groupName.length > 50 ? '...' : '')
+  );
 }
 
 /**
@@ -1253,23 +1260,74 @@ const getGroupStats = asyncHandler(async (req, res) => {
           description: {
             $switch: {
               branches: [
-                { case: { $eq: ['$_id', 'document_created'] }, then: 'New documents created in the system' },
-                { case: { $eq: ['$_id', 'document_updated'] }, then: 'Documents that were modified' },
-                { case: { $eq: ['$_id', 'document_deleted'] }, then: 'Documents that were deleted' },
-                { case: { $eq: ['$_id', 'quotation_expired'] }, then: 'Quotations that have expired' },
-                { case: { $eq: ['$_id', 'quotation_converted'] }, then: 'Quotations converted to receipts' },
-                { case: { $eq: ['$_id', 'payment_received'] }, then: 'Payment confirmations received' },
-                { case: { $eq: ['$_id', 'payment_overdue'] }, then: 'Overdue payment notifications' },
-                { case: { $eq: ['$_id', 'user_created'] }, then: 'New users added to the system' },
-                { case: { $eq: ['$_id', 'user_updated'] }, then: 'User profile updates' },
-                { case: { $eq: ['$_id', 'user_role_changed'] }, then: 'User role modifications' },
-                { case: { $eq: ['$_id', 'user_deleted'] }, then: 'Users removed from the system' },
-                { case: { $eq: ['$_id', 'user_suspended'] }, then: 'User account suspensions' },
-                { case: { $eq: ['$_id', 'user_reactivated'] }, then: 'User account reactivations' },
-                { case: { $eq: ['$_id', 'profile_incomplete'] }, then: 'Incomplete user profiles' },
-                { case: { $eq: ['$_id', 'system_maintenance'] }, then: 'System maintenance notifications' },
-                { case: { $eq: ['$_id', 'backup_completed'] }, then: 'Backup completion confirmations' },
-                { case: { $eq: ['$_id', 'security_alert'] }, then: 'Security-related alerts' }
+                {
+                  case: { $eq: ['$_id', 'document_created'] },
+                  then: 'New documents created in the system'
+                },
+                {
+                  case: { $eq: ['$_id', 'document_updated'] },
+                  then: 'Documents that were modified'
+                },
+                {
+                  case: { $eq: ['$_id', 'document_deleted'] },
+                  then: 'Documents that were deleted'
+                },
+                {
+                  case: { $eq: ['$_id', 'quotation_expired'] },
+                  then: 'Quotations that have expired'
+                },
+                {
+                  case: { $eq: ['$_id', 'quotation_converted'] },
+                  then: 'Quotations converted to receipts'
+                },
+                {
+                  case: { $eq: ['$_id', 'payment_received'] },
+                  then: 'Payment confirmations received'
+                },
+                {
+                  case: { $eq: ['$_id', 'payment_overdue'] },
+                  then: 'Overdue payment notifications'
+                },
+                {
+                  case: { $eq: ['$_id', 'user_created'] },
+                  then: 'New users added to the system'
+                },
+                {
+                  case: { $eq: ['$_id', 'user_updated'] },
+                  then: 'User profile updates'
+                },
+                {
+                  case: { $eq: ['$_id', 'user_role_changed'] },
+                  then: 'User role modifications'
+                },
+                {
+                  case: { $eq: ['$_id', 'user_deleted'] },
+                  then: 'Users removed from the system'
+                },
+                {
+                  case: { $eq: ['$_id', 'user_suspended'] },
+                  then: 'User account suspensions'
+                },
+                {
+                  case: { $eq: ['$_id', 'user_reactivated'] },
+                  then: 'User account reactivations'
+                },
+                {
+                  case: { $eq: ['$_id', 'profile_incomplete'] },
+                  then: 'Incomplete user profiles'
+                },
+                {
+                  case: { $eq: ['$_id', 'system_maintenance'] },
+                  then: 'System maintenance notifications'
+                },
+                {
+                  case: { $eq: ['$_id', 'backup_completed'] },
+                  then: 'Backup completion confirmations'
+                },
+                {
+                  case: { $eq: ['$_id', 'security_alert'] },
+                  then: 'Security-related alerts'
+                }
               ],
               default: 'Other system notifications'
             }
@@ -1325,7 +1383,8 @@ const getGroupStats = asyncHandler(async (req, res) => {
         // Sample notifications (first 3 for preview)
         sampleNotifications: group.notifications.slice(0, 3).map(n => ({
           title: n.title,
-          message: n.message.substring(0, 100) + (n.message.length > 100 ? '...' : ''),
+          message:
+            n.message.substring(0, 100) + (n.message.length > 100 ? '...' : ''),
           createdAt: n.createdAt,
           priority: n.priority,
           isRead: n.isReadByAllUsers
@@ -1340,7 +1399,10 @@ const getGroupStats = asyncHandler(async (req, res) => {
         totalGroups,
         summary: {
           totalNotificationTypes: detailedGroupStats.length,
-          totalNotifications: detailedGroupStats.reduce((sum, stat) => sum + stat.totalNotifications, 0),
+          totalNotifications: detailedGroupStats.reduce(
+            (sum, stat) => sum + stat.totalNotifications,
+            0
+          ),
           totalGroupsCount: totalGroups
         }
       },
