@@ -6,16 +6,16 @@ const { body } = require('express-validator');
 
 const receiptValidation = [
   body('receiptType')
-    .isIn(['box', 'commitment', 'final', 'one_time'])
-    .withMessage('Receipt type must be box, commitment, final, or one_time'),
+    .isIn(['item', 'commitment', 'final', 'one_time'])
+    .withMessage('Receipt type must be item, commitment, final, or one_time'),
 
   body('moveType')
     .optional()
     .isIn(['international', 'residential', 'office'])
     .withMessage('Move type must be international, residential, or office')
     .custom((value, { req }) => {
-      // Move type is required for all receipts except box receipts
-      if (req.body.receiptType !== 'box' && !value) {
+      // Move type is required for all receipts except item receipts
+      if (req.body.receiptType !== 'item' && !value) {
         throw new Error('Move type is required for this receipt type');
       }
       return true;
@@ -27,10 +27,10 @@ const receiptValidation = [
     if (['commitment', 'final', 'one_time'].includes(req.body.receiptType)) {
       return true;
     }
-    // For box receipts, services are required
-    if (req.body.receiptType === 'box') {
+    // For item receipts, services are required
+    if (req.body.receiptType === 'item') {
       if (!value || !Array.isArray(value) || value.length === 0) {
-        throw new Error('At least one service is required for box receipts');
+        throw new Error('At least one service is required for item receipts');
       }
     }
     return true;

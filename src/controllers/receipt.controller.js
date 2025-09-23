@@ -181,8 +181,8 @@ const createReceipt = async (req, res) => {
       services = []; // No services for one-time receipts
       totalAmount = totalMovingAmount;
       amountPaid = totalMovingAmount; // One-time payment means fully paid
-    } else if (req.body.receiptType === 'box') {
-      // BOX RECEIPT: Has services but no location details
+    } else if (req.body.receiptType === 'item') {
+      // ITEM RECEIPT: Has services but no location details
       services = req.body.services.map(service => ({
         ...service,
         quantity: service.quantity || 1,

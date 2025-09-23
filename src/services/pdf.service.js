@@ -437,9 +437,9 @@ class PDFService {
       ? `<img src="${receipt.createdBy.signature.data}" alt="Signature" style="max-width: 100px; max-height: 40px;" />`
       : '<div style="width: 100px; height: 40px; background: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==); background-size: contain; background-repeat: no-repeat;"></div>';
 
-    // For box receipts, use the new template format
-    if (receipt.receiptType === 'box') {
-      return await this.generateBoxReceiptHTML(receipt);
+    // For item receipts, use the new template format
+    if (receipt.receiptType === 'item') {
+      return await this.generateItemReceiptHTML(receipt);
     }
 
     // For commitment receipts, use the new template format
@@ -493,7 +493,7 @@ class PDFService {
             <table class="info-table">
               <tr><td><strong>Name:</strong></td><td>${receipt.client.name}</td></tr>
               <tr><td><strong>Phone:</strong></td><td>${receipt.client.phone}</td></tr>
-              ${receipt.receiptType !== 'box' && receipt.moveType ? `<tr><td><strong>Move Type:</strong></td><td>${receipt.moveType.charAt(0).toUpperCase() + receipt.moveType.slice(1)} Move</td></tr>` : ''}
+              ${receipt.receiptType !== 'item' && receipt.moveType ? `<tr><td><strong>Move Type:</strong></td><td>${receipt.moveType.charAt(0).toUpperCase() + receipt.moveType.slice(1)} Move</td></tr>` : ''}
               ${receipt.client.address ? `<tr><td><strong>Address:</strong></td><td>${receipt.client.address}</td></tr>` : ''}
             </table>
           </div>
@@ -564,9 +564,9 @@ class PDFService {
   }
 
   /**
-   * Generate box receipt HTML template matching the PDF format
+   * Generate item receipt HTML template matching the PDF format
    */
-  async generateBoxReceiptHTML(receipt) {
+  async generateItemReceiptHTML(receipt) {
     const createdDate = this.formatDate(receipt.createdAt);
 
     // Get the last payment from payment history to get receivedBy info
@@ -642,7 +642,7 @@ class PDFService {
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Receipt ${receipt.receiptNumber}</title>
         <style>
-          ${this.getBoxReceiptStyles()}
+          ${this.getItemReceiptStyles()}
         </style>
       </head>
       <body>
@@ -2068,9 +2068,9 @@ class PDFService {
   }
 
   /**
-   * Get box receipt-specific CSS styles matching the PDF design
+   * Get item receipt-specific CSS styles matching the PDF design
    */
-  getBoxReceiptStyles() {
+  getItemReceiptStyles() {
     return `
       * {
         margin: 0;

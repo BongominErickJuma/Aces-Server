@@ -22,7 +22,7 @@ const counterSchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true
-      // E.g., "QTN", "RCP", "BOX", "COM", "FIN", "OTP"
+      // E.g., "QTN", "RCP", "ITM", "COM", "FIN", "OTP"
     },
     year: {
       type: Number,
@@ -70,7 +70,7 @@ counterSchema.statics.getNextSequence = async function (type, year = null) {
   // Determine prefix and counter ID
   const prefixMap = {
     quotation: 'QTN',
-    box_receipt: 'BOX',
+    item_receipt: 'ITM',
     commitment_receipt: 'COM',
     final_receipt: 'FIN',
     one_time_receipt: 'OTP',
@@ -113,7 +113,7 @@ counterSchema.statics.resetYearlyCounters = async function (year = null) {
 
   const counterTypes = [
     'quotation',
-    'box_receipt',
+    'item_receipt',
     'commitment_receipt',
     'final_receipt',
     'one_time_receipt',
@@ -130,7 +130,7 @@ counterSchema.statics.resetYearlyCounters = async function (year = null) {
     if (!existing) {
       const prefixMap = {
         quotation: 'QTN',
-        box_receipt: 'BOX',
+        item_receipt: 'ITM',
         commitment_receipt: 'COM',
         final_receipt: 'FIN',
         one_time_receipt: 'OTP',

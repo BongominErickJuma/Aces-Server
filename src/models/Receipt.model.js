@@ -13,7 +13,7 @@ const receiptSchema = new mongoose.Schema(
       unique: true,
       trim: true,
       match: [
-        /^AMRC-(RCP|BOX|COM|FIN|OTP)-\d{5}$/,
+        /^AMRC-(RCP|ITM|COM|FIN|OTP)-\d{5}$/,
         'Receipt number must follow format AMRC-PREFIX-NNNNN'
       ]
     },
@@ -21,8 +21,8 @@ const receiptSchema = new mongoose.Schema(
       type: String,
       required: [true, 'Receipt type is required'],
       enum: {
-        values: ['box', 'commitment', 'final', 'one_time'],
-        message: 'Receipt type must be box, commitment, final, or one_time'
+        values: ['item', 'commitment', 'final', 'one_time'],
+        message: 'Receipt type must be item, commitment, final, or one_time'
       }
     },
     moveType: {
@@ -31,7 +31,7 @@ const receiptSchema = new mongoose.Schema(
         values: ['international', 'residential', 'office'],
         message: 'Move type must be international, residential, or office'
       }
-      // Optional - not required for box receipts
+      // Optional - not required for item receipts
     },
     quotationId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -411,7 +411,7 @@ receiptSchema.pre('save', function (next) {
 receiptSchema.statics.generateReceiptNumber = async function (receiptType) {
   // Determine prefix based on receipt type
   const prefixMap = {
-    box: 'BOX',
+    item: 'ITM',
     commitment: 'COM',
     final: 'FIN',
     one_time: 'OTP'
