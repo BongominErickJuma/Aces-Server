@@ -53,6 +53,14 @@ const quotationSchema = new mongoose.Schema(
         trim: true,
         maxlength: [200, 'Company name cannot exceed 200 characters']
         // Required for office moves - validated in pre-save middleware
+      },
+      gender: {
+        type: String,
+        enum: {
+          values: ['male', 'female', ''],
+          message: 'Gender must be male, female, or empty'
+        },
+        default: ''
       }
     },
     locations: {

@@ -64,6 +64,14 @@ const receiptSchema = new mongoose.Schema(
         type: String,
         trim: true,
         maxlength: [500, 'Address cannot exceed 500 characters']
+      },
+      gender: {
+        type: String,
+        enum: {
+          values: ['male', 'female', ''],
+          message: 'Gender must be male, female, or empty'
+        },
+        default: ''
       }
     },
     // For commitment, final, and one_time receipts

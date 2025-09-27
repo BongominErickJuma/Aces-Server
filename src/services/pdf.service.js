@@ -343,6 +343,7 @@ class PDFService {
               <div class="client-row"><span class="client-label">Contact Person:</span> <span class="client-value">${quotation.client.name}</span></div>
               <div class="client-row"><span class="client-label">Contact:</span> <span class="client-value">${quotation.client.phone}</span></div>
               <div class="client-row"><span class="client-label">Email:</span> <span class="client-value">${quotation.client.email || ''}</span></div>
+              ${quotation.client.gender ? `<div class="client-row"><span class="client-label">Gender:</span> <span class="client-value">${quotation.client.gender.charAt(0).toUpperCase() + quotation.client.gender.slice(1)}</span></div>` : ''}
               <div class="client-row"><span class="client-label">From:</span> <span class="client-value">${quotation.locations.from}</span></div>
               <div class="client-row"><span class="client-label">To:</span> <span class="client-value">${quotation.locations.to}</span></div>
               ${movingDate ? `<div class="client-row"><span class="client-label">Moving Date:</span> <span class="client-value">${movingDate}</span></div>` : ''}
@@ -493,6 +494,7 @@ class PDFService {
             <table class="info-table">
               <tr><td><strong>Name:</strong></td><td>${receipt.client.name}</td></tr>
               <tr><td><strong>Phone:</strong></td><td>${receipt.client.phone}</td></tr>
+              ${receipt.client.gender ? `<tr><td><strong>Gender:</strong></td><td>${receipt.client.gender.charAt(0).toUpperCase() + receipt.client.gender.slice(1)}</td></tr>` : ''}
               ${receipt.receiptType !== 'item' && receipt.moveType ? `<tr><td><strong>Move Type:</strong></td><td>${receipt.moveType.charAt(0).toUpperCase() + receipt.moveType.slice(1)} Move</td></tr>` : ''}
               ${receipt.client.address ? `<tr><td><strong>Address:</strong></td><td>${receipt.client.address}</td></tr>` : ''}
             </table>
@@ -694,6 +696,10 @@ class PDFService {
               <span class="client-label">Phone Number:</span>
               <span class="client-value">${receipt.client.phone}</span>
             </div>
+            ${receipt.client.gender ? `<div class="client-row">
+              <span class="client-label">Gender:</span>
+              <span class="client-value">${receipt.client.gender.charAt(0).toUpperCase() + receipt.client.gender.slice(1)}</span>
+            </div>` : ''}
             <div class="client-row">
               <span class="client-label">Address:</span>
               <span class="client-value">${receipt.client.address || ''}</span>
@@ -874,6 +880,10 @@ class PDFService {
               <span class="client-label">Phone Number:</span>
               <span class="client-value">${receipt.client.phone}</span>
             </div>
+            ${receipt.client.gender ? `<div class="client-row">
+              <span class="client-label">Gender:</span>
+              <span class="client-value">${receipt.client.gender.charAt(0).toUpperCase() + receipt.client.gender.slice(1)}</span>
+            </div>` : ''}
             <div class="client-row">
               <span class="client-label">Pickup Location:</span>
               <span class="client-value">${receipt.locations?.from || ''}</span>
@@ -1060,6 +1070,10 @@ class PDFService {
               <span class="client-label">Phone Number:</span>
               <span class="client-value">${receipt.client.phone}</span>
             </div>
+            ${receipt.client.gender ? `<div class="client-row">
+              <span class="client-label">Gender:</span>
+              <span class="client-value">${receipt.client.gender.charAt(0).toUpperCase() + receipt.client.gender.slice(1)}</span>
+            </div>` : ''}
             <div class="client-row">
               <span class="client-label">Pickup Location:</span>
               <span class="client-value">${receipt.locations?.from || ''}</span>
@@ -1241,6 +1255,10 @@ class PDFService {
               <span class="client-label">Phone Number:</span>
               <span class="client-value">${receipt.client.phone}</span>
             </div>
+            ${receipt.client.gender ? `<div class="client-row">
+              <span class="client-label">Gender:</span>
+              <span class="client-value">${receipt.client.gender.charAt(0).toUpperCase() + receipt.client.gender.slice(1)}</span>
+            </div>` : ''}
             <div class="client-row">
               <span class="client-label">Pickup Location:</span>
               <span class="client-value">${receipt.locations?.from || ''}</span>

@@ -29,6 +29,11 @@ const quotationValidation = [
     .isLength({ max: 200 })
     .withMessage('Company name cannot exceed 200 characters'),
 
+  body('client.gender')
+    .optional()
+    .isIn(['male', 'female', ''])
+    .withMessage('Gender must be male, female, or empty'),
+
   body('locations.from')
     .trim()
     .isLength({ min: 2, max: 300 })

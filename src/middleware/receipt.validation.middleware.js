@@ -56,6 +56,11 @@ const receiptValidation = [
     .isLength({ max: 500 })
     .withMessage('Address cannot exceed 500 characters'),
 
+  body('client.gender')
+    .optional()
+    .isIn(['male', 'female', ''])
+    .withMessage('Gender must be male, female, or empty'),
+
   body('locations.from')
     .optional()
     .trim()
