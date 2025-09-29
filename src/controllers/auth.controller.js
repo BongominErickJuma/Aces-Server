@@ -123,7 +123,18 @@ const refresh = asyncHandler(async (req, res) => {
     }
 
     // Verify refresh token
-    const decoded = JWTUtils.verifyRefreshToken(refreshToken);
+    let decoded;
+    try {
+      decoded = JWTUtils.verifyRefreshToken(refreshToken);
+    } catch (error) {
+      if (error.name === 'TokenExpiredError') {
+        return ApiResponse.unauthorized(res, 'Refresh token has expired. Please login again.');
+      }
+      if (error.name === 'JsonWebTokenError') {
+        return ApiResponse.unauthorized(res, 'Invalid refresh token format');
+      }
+      throw error;
+    }
 
     // Find user and verify stored refresh token
     const user = await User.findById(decoded.id).select('+refreshToken');
@@ -136,9 +147,15 @@ const refresh = asyncHandler(async (req, res) => {
     }
 
     // Compare refresh token with stored hash
-    const hashedRefreshToken = JWTUtils.hashToken(refreshToken);
-    if (user.refreshToken !== hashedRefreshToken) {
-      return ApiResponse.unauthorized(res, 'Invalid refresh token');
+    const tokenHash = JWTUtils.hashToken(refreshToken);
+
+    // If user has no stored refresh token, they need to login again
+    if (!user.refreshToken) {
+      return ApiResponse.unauthorized(res, 'Session expired. Please login again.');
+    }
+
+    if (user.refreshToken !== tokenHash) {
+      return ApiResponse.unauthorized(res, 'Invalid refresh token. Please login again.');
     }
 
     // Generate new token pair
