@@ -136,8 +136,23 @@ const refresh = asyncHandler(async (req, res) => {
       throw error;
     }
 
-    // Find user and verify stored refresh token
-    const user = await User.findById(decoded.id).select('+refreshToken');
+    // Find user and verify stored refresh token with retry logic for transient connection issues
+    let user;
+    let retries = 2;
+    while (retries > 0) {
+      try {
+        user = await User.findById(decoded.id).select('+refreshToken');
+        break; // Success, exit loop
+      } catch (dbError) {
+        retries--;
+        if (retries === 0 || !dbError.message.includes('ENOTFOUND')) {
+          // If no more retries or not a DNS error, throw
+          throw dbError;
+        }
+        // Wait a bit before retry
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
     if (!user) {
       return ApiResponse.unauthorized(res, 'User not found');
     }

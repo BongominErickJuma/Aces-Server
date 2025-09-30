@@ -81,9 +81,13 @@ const quotationSchema = new mongoose.Schema(
         required: [true, 'Moving date is required'],
         validate: {
           validator: function (v) {
-            return v > new Date();
+            const today = new Date();
+            today.setHours(0, 0, 0, 0); // Reset to start of day
+            const movingDate = new Date(v);
+            movingDate.setHours(0, 0, 0, 0); // Reset to start of day
+            return movingDate >= today;
           },
-          message: 'Moving date must be in the future'
+          message: 'Moving date cannot be in the past'
         }
       }
     },
@@ -140,7 +144,7 @@ const quotationSchema = new mongoose.Schema(
       },
       taxRate: {
         type: Number,
-        default: 0.18, // 18% VAT
+        default: 0, // Default to 0%
         min: [0, 'Tax rate cannot be negative'],
         max: [1, 'Tax rate cannot exceed 100%']
       },

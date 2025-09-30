@@ -48,8 +48,13 @@ const quotationValidation = [
     .isISO8601()
     .toDate()
     .custom(value => {
-      if (value <= new Date()) {
-        throw new Error('Moving date must be in the future');
+      const today = new Date();
+      today.setHours(0, 0, 0, 0); // Reset to start of day
+      const movingDate = new Date(value);
+      movingDate.setHours(0, 0, 0, 0); // Reset to start of day
+
+      if (movingDate < today) {
+        throw new Error('Moving date cannot be in the past');
       }
       return true;
     }),
